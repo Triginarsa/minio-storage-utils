@@ -1,1 +1,44 @@
 run-tests.sh
+
+# Dependencies
+vendor/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE files
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# PHP specific
+*.log
+.phpunit.result.cache
+.phpunit.cache
+
+# Coverage reports
+coverage/
+clover.xml
+coverage.xml
+coverage.clover
+
+# Build artifacts
+build/
+dist/
+
+# Cache
+cache/
+storage/cache/
+bootstrap/cache/
