@@ -176,11 +176,22 @@ class StorageService implements StorageServiceInterface
             } elseif ($this->videoProcessor->isVideo($metadata['mime_type'])) {
                 // For video metadata, we'd need to download the file temporarily
                 // This is optional and can be expensive for large files
-                if ($metadata['size'] < 50 * 1024 * 1024) { // Only for files < 50MB
-                    $tempPath = $this->downloadToTemp($path);
-                    $videoInfo = $this->videoProcessor->getVideoInfo($tempPath);
-                    $metadata = array_merge($metadata, $videoInfo);
-                    unlink($tempPath);
+                if ($this->videoProcessor->isFFmpegAvailable() && $metadata['size'] < 50 * 1024 * 1024) { // Only for files < 50MB
+                    try {
+                        $tempPath = $this->downloadToTemp($path);
+                        $videoInfo = $this->videoProcessor->getVideoInfo($tempPath);
+                        $metadata = array_merge($metadata, $videoInfo);
+                        unlink($tempPath);
+                    } catch (\Exception $e) {
+                        $this->logger->warning('Failed to get video metadata', [
+                            'path' => $path,
+                            'error' => $e->getMessage()
+                        ]);
+                        // Continue without video metadata
+                    }
+                } elseif (!$this->videoProcessor->isFFmpegAvailable()) {
+                    $metadata['video_processing_available'] = false;
+                    $metadata['note'] = 'Video metadata unavailable: FFmpeg not installed';
                 }
             }
 
@@ -431,13 +442,24 @@ class StorageService implements StorageServiceInterface
     {
         $results = [];
         
+        // Check if video processing is requested but FFmpeg is not available
+        $requiresProcessing = isset($options['video']) || isset($options['video_thumbnail']);
+        
+        if ($requiresProcessing && !$this->videoProcessor->isFFmpegAvailable()) {
+            // Log warning but continue with upload
+            $this->logger->warning('Video processing requested but FFmpeg is not available', [
+                'path' => $finalPath,
+                'requested_options' => array_keys(array_filter(['video' => $options['video'] ?? null, 'video_thumbnail' => $options['video_thumbnail'] ?? null]))
+            ]);
+        }
+        
         // Create temporary file for video processing
         $tempInputPath = $this->createTempFile($source);
         $tempOutputPath = $this->createTempOutputPath($finalPath);
         
         try {
-            // Apply video processing if options are provided
-            if (isset($options['video'])) {
+            // Apply video processing if options are provided and FFmpeg is available
+            if (isset($options['video']) && $this->videoProcessor->isFFmpegAvailable()) {
                 $this->videoProcessor->process($tempInputPath, $tempOutputPath, $options['video']);
                 
                 // Upload processed video
@@ -460,8 +482,8 @@ class StorageService implements StorageServiceInterface
                 $originalContent = file_get_contents($tempInputPath);
                 $results['main'] = $this->uploadFile($finalPath, $originalContent, $mimeType);
                 
-                // Create thumbnail even for original video if requested
-                if (isset($options['video_thumbnail'])) {
+                // Create thumbnail even for original video if requested and FFmpeg is available
+                if (isset($options['video_thumbnail']) && $this->videoProcessor->isFFmpegAvailable()) {
                     $thumbnailPath = $this->createTempThumbnailPath($finalPath);
                     $this->videoProcessor->createThumbnail($tempInputPath, $thumbnailPath, $options['video_thumbnail']);
                     
@@ -470,6 +492,10 @@ class StorageService implements StorageServiceInterface
                     $results['thumbnail'] = $this->uploadFile($thumbnailUploadPath, $thumbnailContent, 'image/jpeg');
                     
                     unlink($thumbnailPath);
+                } elseif (isset($options['video_thumbnail']) && !$this->videoProcessor->isFFmpegAvailable()) {
+                    // Add warning about thumbnail creation failure
+                    $results['warnings'] = $results['warnings'] ?? [];
+                    $results['warnings'][] = 'Video thumbnail creation skipped: FFmpeg not available';
                 }
             }
             

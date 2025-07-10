@@ -15,6 +15,14 @@ A PHP library for secure file handling with MinIO object storage, designed speci
   - Format conversion (JPG, PNG, WebP, AVIF)
   - Compression ratio reporting
 - **🖼️ Image Processing**: Resize, compress, watermark, format conversion, and auto-orientation
+- **🎬 Video Processing**: Optional FFmpeg-based video processing with graceful fallback
+  - Video format conversion (MP4, WebM, AVI, MOV)
+  - Video compression and optimization
+  - Thumbnail generation from video frames
+  - Video clipping and resizing
+  - Watermark application
+  - Metadata extraction
+  - Works without FFmpeg (upload-only mode)
 - **📄 Document Security**: Specialized scanning for PDF, Word, Excel files detecting VBA macros and embedded threats
 - **🖼️ Thumbnail Generation**: Automatic thumbnail creation with multiple sizing methods
 - **📝 Flexible Naming**: Hash-based, slug-based, or custom naming strategies
@@ -35,6 +43,13 @@ composer require triginarsa/minio-storage-utils
 - Laravel 10.0 or higher
 - MinIO server or S3-compatible storage
 - GD extension for image processing
+
+### Optional Requirements
+
+- **FFmpeg** (for video processing features)
+  - System installation: `sudo apt-get install ffmpeg` (Ubuntu/Debian)
+  - PHP package: `composer require php-ffmpeg/php-ffmpeg`
+  - **Note**: Video uploads work without FFmpeg, but processing features will be disabled
 
 ## Laravel Setup
 
@@ -354,6 +369,130 @@ foreach ($compressionLevels as $level => $options) {
 }
 ```
 
+### Video Processing (Optional FFmpeg)
+
+Video processing features are **optional** and require FFmpeg to be installed. Without FFmpeg, video uploads work normally but processing features will be disabled with informative error messages.
+
+#### Video Upload Without Processing
+
+```php
+// Video uploads work even without FFmpeg
+public function uploadVideo(Request $request)
+{
+    $request->validate(['video' => 'required|file|mimes:mp4,avi,mov,wmv|max:51200']);
+
+    $result = MinioStorage::upload(
+        $request->file('video'),
+        'videos/' . time() . '-' . $request->file('video')->getClientOriginalName()
+    );
+  
+    return response()->json(['success' => true, 'data' => $result]);
+}
+```
+
+#### Video Processing with FFmpeg
+
+```php
+// Full video processing (requires FFmpeg)
+public function processVideo(Request $request)
+{
+    $request->validate(['video' => 'required|file|mimes:mp4,avi,mov,wmv|max:51200']);
+
+    try {
+        $result = MinioStorage::upload(
+            $request->file('video'),
+            'videos/processed/' . time() . '.mp4',
+            [
+                'video' => [
+                    'format' => 'mp4',
+                    'compression' => 'medium',
+                    'resize' => ['width' => 1280, 'height' => 720],
+                    'clip' => ['start' => 0, 'duration' => 30], // First 30 seconds
+                    'watermark' => [
+                        'path' => public_path('logo.png'),
+                        'position' => 'bottom-right'
+                    ]
+                ],
+                'video_thumbnail' => [
+                    'time' => 5, // Extract frame at 5 seconds
+                    'width' => 320,
+                    'height' => 240
+                ]
+            ]
+        );
+        
+        return response()->json(['success' => true, 'data' => $result]);
+    } catch (\Exception $e) {
+        if (strpos($e->getMessage(), 'FFmpeg') !== false) {
+            // Handle FFmpeg not available
+            return response()->json([
+                'success' => false,
+                'message' => 'Video processing not available. Upload without processing?',
+                'error' => $e->getMessage()
+            ], 422);
+        }
+        throw $e;
+    }
+}
+```
+
+#### Checking FFmpeg Availability
+
+```php
+use Triginarsa\MinioStorageUtils\Processors\VideoProcessor;
+
+// Check if video processing is available
+$videoProcessor = new VideoProcessor($logger);
+$canProcessVideo = $videoProcessor->isFFmpegAvailable();
+
+if ($canProcessVideo) {
+    // Full video processing features available
+    $result = MinioStorage::upload($video, null, [
+        'video' => ['format' => 'mp4', 'compression' => 'medium']
+    ]);
+} else {
+    // Upload without processing
+    $result = MinioStorage::upload($video);
+    // Add warning to user about limited functionality
+}
+```
+
+#### Video Processing Options
+
+```php
+$videoOptions = [
+    'video' => [
+        'format' => 'mp4',           // Output format (mp4, webm)
+        'compression' => 'medium',    // ultrafast, fast, medium, slow, veryslow
+        'resize' => [
+            'width' => 1280,
+            'height' => 720,
+            'mode' => 'fit'          // fit, crop
+        ],
+        'clip' => [
+            'start' => '00:00:10',   // Start time
+            'duration' => '00:01:30' // Duration
+        ],
+        'rotate' => 90,              // Rotation angle (90, 180, 270)
+        'watermark' => [
+            'path' => '/path/to/logo.png',
+            'position' => 'bottom-right', // top-left, top-right, bottom-left, bottom-right, center
+            'opacity' => 0.7
+        ],
+        'video_bitrate' => '2000k',  // Video bitrate
+        'audio_bitrate' => '128k',   // Audio bitrate
+        'additional_params' => ['-preset', 'slow'] // Custom FFmpeg parameters
+    ],
+    'video_thumbnail' => [
+        'time' => 5,                 // Time in seconds or '00:00:05'
+        'width' => 320,
+        'height' => 240,
+        'suffix' => '-thumb',
+        'path' => 'thumbnails'
+    ]
+];
+```
+
 ### Security Scanning Configuration
 
 ```php
@@ -496,6 +635,32 @@ Generate a presigned URL for file access.
   - `suffix` (string): Filename suffix
   - `path` (string): Thumbnail directory
   - `optimize` (bool): Apply optimization to thumbnails
+
+#### Video Options (Optional - Requires FFmpeg)
+
+- `video` (array): Video processing configuration
+  - `format` (string): Output format ('mp4', 'webm')
+  - `compression` (string): Compression preset ('ultrafast', 'fast', 'medium', 'slow', 'veryslow')
+  - `resize` (array): Video resizing configuration
+    - `width/height` (int): Target dimensions
+    - `mode` (string): Resize mode ('fit', 'crop')
+  - `clip` (array): Video clipping configuration
+    - `start` (string|int): Start time ('00:00:10' or seconds)
+    - `duration` (string|int): Duration ('00:01:30' or seconds)
+  - `rotate` (int): Rotation angle (90, 180, 270)
+  - `watermark` (array): Video watermark configuration
+    - `path` (string): Watermark image path
+    - `position` (string): Position ('top-left', 'top-right', 'bottom-left', 'bottom-right', 'center')
+    - `opacity` (float): Opacity (0.0 to 1.0)
+  - `video_bitrate` (string): Video bitrate ('2000k')
+  - `audio_bitrate` (string): Audio bitrate ('128k')
+  - `additional_params` (array): Custom FFmpeg parameters
+
+- `video_thumbnail` (array): Video thumbnail generation configuration
+  - `time` (int|string): Frame extraction time (seconds or '00:00:05')
+  - `width/height` (int): Thumbnail dimensions
+  - `suffix` (string): Filename suffix
+  - `path` (string): Thumbnail directory
 
 ## Compression Performance & Benefits
 

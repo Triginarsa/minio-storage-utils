@@ -12,8 +12,7 @@
         "psr/log": "^3.0",
         "illuminate/support": "^10.0|^11.0",
         "illuminate/filesystem": "^10.0|^11.0",
-        "illuminate/http": "^10.0|^11.0",
-        "php-ffmpeg/php-ffmpeg": "^1.2"
+        "illuminate/http": "^10.0|^11.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5",
@@ -23,7 +22,8 @@
         "symfony/var-dumper": "^6.0|^7.0"
     },
     "suggest": {
-        "ext-ffmpeg": "Required for video processing features"
+        "php-ffmpeg/php-ffmpeg": "Required for video processing features (^1.2)",
+        "ext-ffmpeg": "System FFmpeg installation required for video processing"
     },
     "license": "MIT",
     "autoload": {

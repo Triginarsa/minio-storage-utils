@@ -14,9 +14,10 @@ use Triginarsa\MinioStorageUtils\Exceptions\UploadException;
 
 class VideoProcessor
 {
-    private FFMpeg $ffmpeg;
+    private ?FFMpeg $ffmpeg = null;
     private LoggerInterface $logger;
     private array $videoTypes;
+    private bool $ffmpegAvailable = false;
 
     public function __construct(LoggerInterface $logger, array $ffmpegConfig = [])
     {
@@ -33,13 +34,22 @@ class VideoProcessor
         $config = array_merge($defaultConfig, $ffmpegConfig);
         
         try {
+            // Check if php-ffmpeg package is installed
+            if (!class_exists('FFMpeg\FFMpeg')) {
+                throw new \Exception('php-ffmpeg/php-ffmpeg package is not installed');
+            }
+            
             $this->ffmpeg = FFMpeg::create($config);
+            $this->ffmpegAvailable = true;
+            $this->logger->info('FFmpeg initialized successfully', ['config' => $config]);
         } catch (\Exception $e) {
-            throw new UploadException(
-                "Failed to initialize FFmpeg: {$e->getMessage()}. Please ensure FFmpeg is installed and accessible.",
-                ['config' => $config],
-                $e
-            );
+            $this->ffmpegAvailable = false;
+            $this->logger->warning('FFmpeg not available', [
+                'error' => $e->getMessage(),
+                'config' => $config,
+                'php_ffmpeg_installed' => class_exists('FFMpeg\FFMpeg'),
+                'suggestion' => 'Install php-ffmpeg/php-ffmpeg package and ensure FFmpeg is installed on the system'
+            ]);
         }
 
         $this->videoTypes = [
@@ -60,8 +70,27 @@ class VideoProcessor
         return in_array($mimeType, $this->videoTypes) || strpos($mimeType, 'video/') === 0;
     }
 
+    public function isFFmpegAvailable(): bool
+    {
+        return $this->ffmpegAvailable;
+    }
+
+    private function requireFFmpeg(string $operation): void
+    {
+        if (!$this->ffmpegAvailable) {
+            throw new UploadException(
+                "FFmpeg is required for {$operation} but is not installed or accessible. " .
+                "Please install FFmpeg to use video processing features. " .
+                "Video uploads without processing are still supported.",
+                ['operation' => $operation, 'ffmpeg_available' => false]
+            );
+        }
+    }
+
     public function process(string $inputPath, string $outputPath, array $options): string
     {
+        $this->requireFFmpeg('video processing');
+
         $this->logger->info('Video processing started', [
             'input' => $inputPath,
             'output' => $outputPath,
@@ -112,6 +141,8 @@ class VideoProcessor
 
     public function createThumbnail(string $inputPath, string $outputPath, array $options): string
     {
+        $this->requireFFmpeg('video thumbnail creation');
+
         $this->logger->info('Video thumbnail creation started', [
             'input' => $inputPath,
             'output' => $outputPath,
@@ -168,6 +199,8 @@ class VideoProcessor
 
     public function getVideoInfo(string $videoPath): array
     {
+        $this->requireFFmpeg('video information retrieval');
+
         try {
             $video = $this->ffmpeg->open($videoPath);
             $ffprobe = $video->getFFProbe();
@@ -204,12 +237,11 @@ class VideoProcessor
             return $info;
 
         } catch (\Exception $e) {
-            $this->logger->error('Failed to get video info', [
-                'video_path' => $videoPath,
-                'error' => $e->getMessage()
-            ]);
-            
-            return [];
+            throw new UploadException(
+                "Failed to get video information: {$e->getMessage()}",
+                ['video_path' => $videoPath],
+                $e
+            );
         }
     }
 
@@ -379,6 +411,8 @@ class VideoProcessor
 
     public function convertToMp4(string $inputPath, string $outputPath, array $options = []): string
     {
+        $this->requireFFmpeg('video conversion to MP4');
+
         $this->logger->info('Converting video to MP4', [
             'input' => $inputPath,
             'output' => $outputPath
@@ -394,6 +428,8 @@ class VideoProcessor
 
     public function compressVideo(string $inputPath, string $outputPath, string $compressionLevel = 'medium'): string
     {
+        $this->requireFFmpeg('video compression');
+
         $this->logger->info('Compressing video', [
             'input' => $inputPath,
             'output' => $outputPath,

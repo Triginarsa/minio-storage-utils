@@ -300,10 +300,97 @@ class VideoProcessorTest extends TestCase
             'ffprobe.binaries' => '/nonexistent/ffprobe',
         ]);
 
-        $this->expectException(\Exception::class);
-        $this->expectExceptionMessage('FFmpeg not found');
+        $this->assertFalse($processor->isFFmpegAvailable());
         
-        $processor->process('dummy content', []);
+        $this->expectException(\Triginarsa\MinioStorageUtils\Exceptions\UploadException::class);
+        $this->expectExceptionMessage('FFmpeg is required for video processing');
+        
+        $processor->process('/tmp/dummy.mp4', '/tmp/output.mp4', []);
+    }
+
+    public function testFFmpegAvailabilityCheck(): void
+    {
+        // Test with valid processor (may or may not have FFmpeg)
+        $available = $this->processor->isFFmpegAvailable();
+        $this->assertIsBool($available);
+        
+        // Test with invalid FFmpeg path
+        $invalidProcessor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+        
+        $this->assertFalse($invalidProcessor->isFFmpegAvailable());
+    }
+
+    public function testVideoProcessingWithoutFFmpeg(): void
+    {
+        $processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+
+        // Video type detection should still work
+        $this->assertTrue($processor->isVideo('video/mp4'));
+        $this->assertFalse($processor->isVideo('image/jpeg'));
+        
+        // But processing should fail with informative error
+        $this->expectException(\Triginarsa\MinioStorageUtils\Exceptions\UploadException::class);
+        $this->expectExceptionMessage('FFmpeg is required for video processing but is not installed');
+        
+        $processor->process('/tmp/dummy.mp4', '/tmp/output.mp4', []);
+    }
+
+    public function testThumbnailCreationWithoutFFmpeg(): void
+    {
+        $processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+
+        $this->expectException(\Triginarsa\MinioStorageUtils\Exceptions\UploadException::class);
+        $this->expectExceptionMessage('FFmpeg is required for video thumbnail creation');
+        
+        $processor->createThumbnail('/tmp/dummy.mp4', '/tmp/thumb.jpg', []);
+    }
+
+    public function testVideoInfoWithoutFFmpeg(): void
+    {
+        $processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+
+        $this->expectException(\Triginarsa\MinioStorageUtils\Exceptions\UploadException::class);
+        $this->expectExceptionMessage('FFmpeg is required for video information retrieval');
+        
+        $processor->getVideoInfo('/tmp/dummy.mp4');
+    }
+
+    public function testConvertToMp4WithoutFFmpeg(): void
+    {
+        $processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+
+        $this->expectException(\Triginarsa\MinioStorageUtils\Exceptions\UploadException::class);
+        $this->expectExceptionMessage('FFmpeg is required for video conversion to MP4');
+        
+        $processor->convertToMp4('/tmp/dummy.avi', '/tmp/output.mp4');
+    }
+
+    public function testCompressVideoWithoutFFmpeg(): void
+    {
+        $processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+
+        $this->expectException(\Triginarsa\MinioStorageUtils\Exceptions\UploadException::class);
+        $this->expectExceptionMessage('FFmpeg is required for video compression');
+        
+        $processor->compressVideo('/tmp/dummy.mp4', '/tmp/output.mp4');
     }
 
     public function testProcessVideoWithCustomBitrate(): void
