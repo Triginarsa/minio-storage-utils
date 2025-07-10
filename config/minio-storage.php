@@ -111,7 +111,7 @@ return [
     'thumbnail' => [
         'width' => env('MINIO_THUMBNAIL_WIDTH', 200),
         'height' => env('MINIO_THUMBNAIL_HEIGHT', 200),
-        'method' => env('MINIO_THUMBNAIL_METHOD', 'fit'), // fit, crop, resize
+        'method' => env('MINIO_THUMBNAIL_METHOD', 'fit'), // fit, crop, proportional, scale, resize
         'quality' => env('MINIO_THUMBNAIL_QUALITY', 75),
         'suffix' => env('MINIO_THUMBNAIL_SUFFIX', '-thumb'),
         'path' => env('MINIO_THUMBNAIL_PATH', 'thumbnails'),

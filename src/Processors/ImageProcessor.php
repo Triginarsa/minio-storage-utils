@@ -56,15 +56,30 @@ class ImageProcessor
         $maxWidth = $options['max_width'] ?? null;
         $maxHeight = $options['max_height'] ?? null;
         
-        if ($maxWidth || $maxHeight) {
-            $image->resize($maxWidth, $maxHeight, function ($constraint) {
-                $constraint->aspectRatio();
-                $constraint->upsize();
-            });
+        if ($maxWidth && $maxHeight) {
+            // Both max dimensions specified - scale down to fit within bounds
+            $image->scaleDown($maxWidth, $maxHeight);
             
-            $this->logger->info('Image auto-resized to max dimensions', [
+            $this->logger->info('Image scaled down to fit max dimensions', [
                 'max_width' => $maxWidth,
-                'max_height' => $maxHeight
+                'max_height' => $maxHeight,
+                'final_dimensions' => $image->width() . 'x' . $image->height()
+            ]);
+        } elseif ($maxWidth && !$maxHeight) {
+            // Only max width specified - scale down proportionally to max width
+            $image->scaleDown($maxWidth);
+            
+            $this->logger->info('Image scaled down to max width', [
+                'max_width' => $maxWidth,
+                'final_dimensions' => $image->width() . 'x' . $image->height()
+            ]);
+        } elseif (!$maxWidth && $maxHeight) {
+            // Only max height specified - scale down proportionally to max height
+            $image->scaleDown(height: $maxHeight);
+            
+            $this->logger->info('Image scaled down to max height', [
+                'max_height' => $maxHeight,
+                'final_dimensions' => $image->width() . 'x' . $image->height()
             ]);
         }
 
@@ -163,13 +178,25 @@ class ImageProcessor
 
         switch ($method) {
             case 'fit':
+                // Fit within bounds maintaining aspect ratio
                 $image->contain($width, $height);
                 break;
             case 'crop':
+                // Crop to exact dimensions
                 $image->cover($width, $height);
                 break;
+            case 'proportional':
+            case 'scale':
+                // Scale proportionally to fit within bounds
+                $image->scaleDown($width, $height);
+                break;
+            case 'resize':
+                // Force resize (may distort)
+                $image->resize($width, $height);
+                break;
             default:
-                $image->scale($width, $height);
+                // Default to proportional scaling
+                $image->scaleDown($width, $height);
         }
 
         $quality = $options['quality'] ?? 75;
@@ -243,7 +270,7 @@ class ImageProcessor
 
         // Resize for web if too large
         if ($originalWidth > $webOptions['max_width'] || $originalHeight > $webOptions['max_height']) {
-            $image->scale($webOptions['max_width'], $webOptions['max_height']);
+            $image->scaleDown($webOptions['max_width'], $webOptions['max_height']);
         }
 
         $encoded = $this->encodeWithAdvancedCompression($image, $webOptions['format'], $webOptions['quality'], $webOptions);

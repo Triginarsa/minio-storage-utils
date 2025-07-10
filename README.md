@@ -224,12 +224,34 @@ use Triginarsa\MinioStorageUtils\Naming\SlugNamer;
 
 // Using built-in namers
 $result = MinioStorage::upload($file, null, ['naming' => 'hash']);
+// Example output: "a1b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789.jpg"
+
 $result = MinioStorage::upload($file, null, ['naming' => 'slug']);
+// Example output: "my-vacation-photo-1704067200.jpg"
+
 $result = MinioStorage::upload($file, null, ['naming' => 'original']);
+// Example output: "My Vacation Photo.jpg" (keeps original name)
 
 // Using custom namer instance
 $result = MinioStorage::upload($file, null, ['naming' => new HashNamer()]);
+// Example output: "b2c3d4e5f6789abcdef0123456789abcdef0123456789abcdef0123456789a1.jpg"
 ```
+
+#### Naming Strategy Examples
+
+For a file originally named `"My Vacation Photo.jpg"`:
+
+| Strategy | Generated Filename | Description |
+|----------|-------------------|-------------|
+| `'hash'` | `a1b2c3d4e5f6...123456789.jpg` | SHA256 hash of file content (64 chars) |
+| `'slug'` | `my-vacation-photo-1704067200.jpg` | URL-friendly slug + timestamp |
+| `'original'` | `My Vacation Photo.jpg` | Original filename preserved |
+
+#### Benefits of Each Strategy
+
+- **Hash**: Content-based, prevents duplicates, cache-friendly
+- **Slug**: SEO-friendly URLs, readable filenames, timestamp prevents conflicts
+- **Original**: Preserves user-intended names, familiar to users
 
 ### Image Processing & Advanced Compression
 
@@ -254,7 +276,7 @@ $result = MinioStorage::upload($image, null, [
     'thumbnail' => [
         'width' => 200,
         'height' => 200,
-        'method' => 'fit', // fit, crop, resize
+        'method' => 'fit', // fit, crop, proportional, scale, resize
         'quality' => 75,
         'format' => 'jpg',
         'suffix' => '-thumb',
@@ -629,7 +651,12 @@ Generate a presigned URL for file access.
 
 - `thumbnail` (array): Thumbnail generation configuration
   - `width/height` (int): Thumbnail dimensions
-  - `method` (string): Sizing method ('fit', 'crop', 'resize')
+  - `method` (string): Sizing method:
+    - `'fit'`: Proportionally resize to fit within bounds (default)
+    - `'crop'`: Crop to exact dimensions
+    - `'proportional'`: Scale proportionally (same as 'fit')
+    - `'scale'`: Scale proportionally to fit within bounds
+    - `'resize'`: Force exact dimensions (may distort)
   - `quality` (int): Compression quality
   - `format` (string): Output format
   - `suffix` (string): Filename suffix
