@@ -152,16 +152,13 @@ class ImageProcessor
                 $image->cover($width, $height);
                 break;
             default:
-                $image->resize($width, $height, function ($constraint) {
-                    $constraint->aspectRatio();
-                    $constraint->upsize();
-                });
+                $image->scale($width, $height);
         }
 
         $quality = $options['quality'] ?? 75;
         $format = $options['format'] ?? 'jpg';
         
-        $encoded = $image->encode($format, $quality);
+        $encoded = $this->encodeWithAdvancedCompression($image, $format, $quality, $options);
         
         $this->logger->info('Thumbnail created', [
             'width' => $width,
@@ -229,10 +226,7 @@ class ImageProcessor
 
         // Resize for web if too large
         if ($originalWidth > $webOptions['max_width'] || $originalHeight > $webOptions['max_height']) {
-            $image->resize($webOptions['max_width'], $webOptions['max_height'], function ($constraint) {
-                $constraint->aspectRatio();
-                $constraint->upsize();
-            });
+            $image->scale($webOptions['max_width'], $webOptions['max_height']);
         }
 
         $encoded = $this->encodeWithAdvancedCompression($image, $webOptions['format'], $webOptions['quality'], $webOptions);
@@ -336,7 +330,20 @@ class ImageProcessor
             // For now, we'll use standard encoding
         }
 
-        return $image->encode($format, $quality);
+        // Use the new Intervention Image v3 API
+        switch ($format) {
+            case 'jpg':
+            case 'jpeg':
+                return $image->encodeByMediaType('image/jpeg', $quality);
+            case 'png':
+                return $image->encodeByMediaType('image/png');
+            case 'webp':
+                return $image->encodeByMediaType('image/webp', $quality);
+            case 'avif':
+                return $image->encodeByMediaType('image/avif', $quality);
+            default:
+                return $image->encodeByMediaType('image/jpeg', $quality);
+        }
     }
 
     private function compressToTargetSize($image, int $targetSize, string $format, int $maxQuality, int $minQuality): string
@@ -344,7 +351,7 @@ class ImageProcessor
         $currentQuality = $maxQuality;
         
         while ($currentQuality >= $minQuality) {
-            $encoded = $image->encode($format, $currentQuality);
+            $encoded = $this->encodeWithAdvancedCompression($image, $format, $currentQuality, []);
             $currentSize = strlen($encoded->toString());
             
             if ($currentSize <= $targetSize) {
@@ -360,7 +367,7 @@ class ImageProcessor
         }
 
         // If we can't reach target size, return at minimum quality
-        $encoded = $image->encode($format, $minQuality);
+        $encoded = $this->encodeWithAdvancedCompression($image, $format, $minQuality, []);
         $this->logger->warning('Could not reach target size', [
             'target_size' => $targetSize,
             'actual_size' => strlen($encoded->toString()),

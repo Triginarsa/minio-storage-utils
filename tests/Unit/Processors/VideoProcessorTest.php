@@ -209,18 +209,24 @@ class VideoProcessorTest extends TestCase
 
     public function testProcessInvalidVideo(): void
     {
-        $invalidContent = 'This is not a video';
+        $invalidVideoPath = $this->testFilesPath . '/invalid.mp4';
+        file_put_contents($invalidVideoPath, 'This is not a video');
         
         $this->expectException(\Exception::class);
-        $this->processor->process($invalidContent, []);
+        $this->processor->process($invalidVideoPath, $invalidVideoPath . '.out', []);
+        
+        unlink($invalidVideoPath);
     }
 
     public function testProcessEmptyContent(): void
     {
-        $emptyContent = '';
+        $emptyVideoPath = $this->testFilesPath . '/empty.mp4';
+        file_put_contents($emptyVideoPath, '');
         
         $this->expectException(\Exception::class);
-        $this->processor->process($emptyContent, []);
+        $this->processor->process($emptyVideoPath, $emptyVideoPath . '.out', []);
+        
+        unlink($emptyVideoPath);
     }
 
     public function testProcessVideoWithInvalidWatermark(): void
@@ -228,7 +234,7 @@ class VideoProcessorTest extends TestCase
         $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
         
         $videoPath = $this->getTestVideoPath();
-        $content = file_get_contents($videoPath);
+        $outputPath = $this->testFilesPath . '/test_watermark_output.mp4';
         
         $options = [
             'watermark' => [
@@ -238,7 +244,9 @@ class VideoProcessorTest extends TestCase
         ];
 
         $this->expectException(\Exception::class);
-        $this->processor->process($content, $options);
+        $this->processor->process($videoPath, $outputPath, $options);
+        
+        if (file_exists($outputPath)) unlink($outputPath);
     }
 
     public function testProcessVideoWithInvalidDimensions(): void
@@ -246,14 +254,16 @@ class VideoProcessorTest extends TestCase
         $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
         
         $videoPath = $this->getTestVideoPath();
-        $content = file_get_contents($videoPath);
+        $outputPath = $this->testFilesPath . '/test_dimensions_output.mp4';
         
         $options = [
             'resize' => ['width' => 0, 'height' => 0],
         ];
 
         $this->expectException(\Exception::class);
-        $this->processor->process($content, $options);
+        $this->processor->process($videoPath, $outputPath, $options);
+        
+        if (file_exists($outputPath)) unlink($outputPath);
     }
 
     public function testProcessVideoWithInvalidClipDuration(): void
@@ -261,7 +271,7 @@ class VideoProcessorTest extends TestCase
         $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
         
         $videoPath = $this->getTestVideoPath();
-        $content = file_get_contents($videoPath);
+        $outputPath = $this->testFilesPath . '/test_clip_output.mp4';
         
         $options = [
             'clip' => [
@@ -271,7 +281,9 @@ class VideoProcessorTest extends TestCase
         ];
 
         $this->expectException(\Exception::class);
-        $this->processor->process($content, $options);
+        $this->processor->process($videoPath, $outputPath, $options);
+        
+        if (file_exists($outputPath)) unlink($outputPath);
     }
 
     public function testGenerateThumbnailWithInvalidTime(): void
@@ -279,18 +291,23 @@ class VideoProcessorTest extends TestCase
         $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
         
         $videoPath = $this->getTestVideoPath();
-        $content = file_get_contents($videoPath);
+        $outputPath = $this->testFilesPath . '/test_thumb.jpg';
         
         $this->expectException(\Exception::class);
-        $this->processor->generateThumbnail($content, -5);
+        $this->processor->createThumbnail($videoPath, $outputPath, ['time' => -5]);
+        
+        if (file_exists($outputPath)) unlink($outputPath);
     }
 
     public function testGetVideoInfoFromInvalidContent(): void
     {
-        $invalidContent = 'This is not a video';
+        $invalidVideoPath = $this->testFilesPath . '/invalid_info.mp4';
+        file_put_contents($invalidVideoPath, 'This is not a video');
         
         $this->expectException(\Exception::class);
-        $this->processor->getVideoInfo($invalidContent);
+        $this->processor->getVideoInfo($invalidVideoPath);
+        
+        unlink($invalidVideoPath);
     }
 
     public function testFFmpegNotInstalled(): void

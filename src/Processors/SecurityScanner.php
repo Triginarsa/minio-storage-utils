@@ -15,6 +15,7 @@ class SecurityScanner
         $this->logger = $logger;
         $this->dangerousPatterns = [
             '/<\?php/i',
+            '/<\?\s/i',  // PHP short tag
             '/<\?=/i',
             '/<script/i',
             '/eval\s*\(/i',

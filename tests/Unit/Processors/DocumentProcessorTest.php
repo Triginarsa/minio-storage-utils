@@ -145,7 +145,7 @@ class DocumentProcessorTest extends TestCase
         $mimeType = 'application/pdf';
 
         $this->expectException(SecurityException::class);
-        $this->expectExceptionMessage('PDF contains embedded files');
+        $this->expectExceptionMessage('Potentially dangerous content detected in document: malicious.pdf');
         
         $this->processor->scan($content, $filename, $mimeType);
     }

@@ -74,7 +74,7 @@ class DocumentProcessor
         ]);
 
         // Check file size
-        $maxSize = config('minio-storage.security.max_file_size', 10485760);
+        $maxSize = function_exists('config') ? config('minio-storage.security.max_file_size', 10485760) : 10485760;
         if (strlen($content) > $maxSize) {
             $this->logger->warning('Document too large for scanning', [
                 'filename' => $filename,

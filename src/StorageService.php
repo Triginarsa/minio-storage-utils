@@ -336,17 +336,21 @@ class StorageService implements StorageServiceInterface
 
     private function getDefaultOptions(): array
     {
-        return config('minio-storage.default_options', [
+        return function_exists('config') ? config('minio-storage.default_options', [
             'scan' => true,
             'naming' => 'hash',
             'preserve_structure' => true,
-        ]);
+        ]) : [
+            'scan' => true,
+            'naming' => 'hash',
+            'preserve_structure' => true,
+        ];
     }
 
     private function validateFileType(string $extension, string $mimeType): void
     {
-        $allowedTypes = config('minio-storage.allowed_types', []);
-        $allAllowed = array_merge(...array_values($allowedTypes));
+        $allowedTypes = function_exists('config') ? config('minio-storage.allowed_types', []) : [];
+        $allAllowed = empty($allowedTypes) ? [] : array_merge(...array_values($allowedTypes));
         
         if (!empty($allAllowed) && !in_array(strtolower($extension), $allAllowed)) {
             throw new UploadException(
@@ -363,12 +367,12 @@ class StorageService implements StorageServiceInterface
         }
 
         // Scan images if enabled
-        if ($this->imageProcessor->isImage($mimeType) && config('minio-storage.security.scan_images', false)) {
+        if ($this->imageProcessor->isImage($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_images', false) : false)) {
             $this->securityScanner->scan($content, $filename);
         }
 
         // Scan documents if enabled
-        if ($this->documentProcessor->isDocument($mimeType) && config('minio-storage.security.scan_documents', true)) {
+        if ($this->documentProcessor->isDocument($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_documents', true) : true)) {
             $this->documentProcessor->scan($content, $filename, $mimeType);
         }
 
@@ -391,19 +395,19 @@ class StorageService implements StorageServiceInterface
         // Apply different processing based on options
         if ($shouldOptimizeForWeb) {
             // Web optimization (resize + compress for web)
-            $webOptions = array_merge(config('minio-storage.web_optimization', []), $options['web_options'] ?? []);
+            $webOptions = array_merge(function_exists('config') ? config('minio-storage.web_optimization', []) : [], $options['web_options'] ?? []);
             $processedContent = $this->imageProcessor->optimizeForWeb($content, $webOptions);
             $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions));
             
         } elseif ($shouldCompress) {
             // Dedicated compression
-            $compressionOptions = array_merge(config('minio-storage.compression', []), $options['compression_options'] ?? []);
+            $compressionOptions = array_merge(function_exists('config') ? config('minio-storage.compression', []) : [], $options['compression_options'] ?? []);
             $processedContent = $this->imageProcessor->compressImage($content, $compressionOptions);
             $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions));
             
         } elseif ($shouldOptimize || isset($options['image'])) {
             // General image processing with optimization
-            $imageOptions = array_merge(config('minio-storage.image', []), $options['image'] ?? []);
+            $imageOptions = array_merge(function_exists('config') ? config('minio-storage.image', []) : [], $options['image'] ?? []);
             
             // Enable optimization if requested
             if ($shouldOptimize) {
@@ -421,7 +425,7 @@ class StorageService implements StorageServiceInterface
         
         // Create thumbnail if requested
         if (isset($options['thumbnail'])) {
-            $thumbnailOptions = array_merge(config('minio-storage.thumbnail', []), $options['thumbnail']);
+            $thumbnailOptions = array_merge(function_exists('config') ? config('minio-storage.thumbnail', []) : [], $options['thumbnail']);
             
             // Apply compression to thumbnail as well
             if ($shouldCompress || $shouldOptimize) {

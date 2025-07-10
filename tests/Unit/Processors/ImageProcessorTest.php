@@ -1,8 +1,8 @@
 <?php
 
-namespace Tests\Unit\Processors;
+namespace Triginarsa\MinioStorageUtils\Tests\Unit\Processors;
 
-use Tests\TestCase;
+use Triginarsa\MinioStorageUtils\Tests\TestCase;
 use Triginarsa\MinioStorageUtils\Processors\ImageProcessor;
 use Psr\Log\NullLogger;
 
@@ -359,5 +359,27 @@ class ImageProcessorTest extends TestCase
 
         $result = $this->processor->process($this->testImageContent, $options);
         $this->assertNotEmpty($result);
+    }
+
+    private function generateTestImageContent(): string
+    {
+        // Create a simple test image
+        $image = imagecreate(200, 200);
+        $white = imagecolorallocate($image, 255, 255, 255);
+        $black = imagecolorallocate($image, 0, 0, 0);
+        $red = imagecolorallocate($image, 255, 0, 0);
+        
+        imagefill($image, 0, 0, $white);
+        imagestring($image, 5, 50, 50, 'TEST IMAGE', $black);
+        imagerectangle($image, 10, 10, 190, 190, $red);
+        
+        ob_start();
+        imagejpeg($image, null, 90);
+        $content = ob_get_contents();
+        ob_end_clean();
+        
+        imagedestroy($image);
+        
+        return $content;
     }
 } 

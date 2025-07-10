@@ -20,6 +20,7 @@ class ComposerStaticInit7321dee42fd3f7a24649fc6183f04b48
     public static $prefixLengthsPsr4 = array (
         'T' => 
         array (
+            'Triginarsa\\MinioStorageUtils\\Tests\\' => 35,
             'Triginarsa\\MinioStorageUtils\\' => 29,
         ),
         'S' => 
@@ -70,6 +71,10 @@ class ComposerStaticInit7321dee42fd3f7a24649fc6183f04b48
     );
 
     public static $prefixDirsPsr4 = array (
+        'Triginarsa\\MinioStorageUtils\\Tests\\' => 
+        array (
+            0 => __DIR__ . '/../..' . '/tests',
+        ),
         'Triginarsa\\MinioStorageUtils\\' => 
         array (
             0 => __DIR__ . '/../..' . '/src',
@@ -84,8 +89,8 @@ class ComposerStaticInit7321dee42fd3f7a24649fc6183f04b48
         ),
         'Psr\\Http\\Message\\' => 
         array (
-            0 => __DIR__ . '/..' . '/psr/http-message/src',
-            1 => __DIR__ . '/..' . '/psr/http-factory/src',
+            0 => __DIR__ . '/..' . '/psr/http-factory/src',
+            1 => __DIR__ . '/..' . '/psr/http-message/src',
         ),
         'Psr\\Http\\Client\\' => 
         array (

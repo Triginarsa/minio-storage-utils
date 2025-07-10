@@ -9,13 +9,7 @@
          stopOnFailure="false"
          cacheDirectory=".phpunit.cache"
          backupGlobals="false"
-         backupStaticAttributes="false"
          beStrictAboutOutputDuringTests="true"
-         beStrictAboutTodoAnnotatedTests="true"
-         convertDeprecationsToExceptions="true"
-         convertErrorsToExceptions="true"
-         convertNoticesToExceptions="true"
-         convertWarningsToExceptions="true"
          processIsolation="false"
          stopOnError="false">
     <testsuites>
@@ -26,14 +20,15 @@
             <directory suffix="Test.php">./tests/Feature</directory>
         </testsuite>
     </testsuites>
-    <coverage>
+
+    <source>
         <include>
             <directory suffix=".php">./src</directory>
         </include>
         <exclude>
             <directory>./src/Laravel</directory>
         </exclude>
-    </coverage>
+    </source>
     <php>
         <env name="APP_ENV" value="testing"/>
         <env name="CACHE_DRIVER" value="array"/>

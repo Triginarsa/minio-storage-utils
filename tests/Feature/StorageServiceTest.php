@@ -307,13 +307,13 @@ class StorageServiceTest extends TestCase
         ];
 
         // Should not throw exception, just ignore invalid options
-        $this->expectNotToPerformAssertions();
-        
         try {
             $this->storageService->upload($content, 'test.jpg', $options);
+            // If we get here, the test passed
+            $this->assertTrue(true);
         } catch (\Exception $e) {
             // Expected to fail due to mock service, but not due to invalid options
-            $this->assertNotStringContainsString('invalid_option', $e->getMessage());
+            $this->assertStringNotContainsString('invalid_option', $e->getMessage());
         }
     }
 
