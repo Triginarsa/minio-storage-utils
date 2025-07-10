@@ -73,15 +73,32 @@ class ImageProcessor
             $width = $options['resize']['width'] ?? null;
             $height = $options['resize']['height'] ?? null;
             
-            if ($width || $height) {
+            if ($width && $height) {
+                // Both dimensions specified - resize with aspect ratio constraint
                 $image->resize($width, $height, function ($constraint) {
                     $constraint->aspectRatio();
                     $constraint->upsize();
                 });
                 
-                $this->logger->info('Image manually resized', [
-                    'width' => $width,
-                    'height' => $height
+                $this->logger->info('Image resized to max dimensions', [
+                    'max_width' => $width,
+                    'max_height' => $height
+                ]);
+            } elseif ($width && !$height) {
+                // Only width specified - scale down proportionally to max width
+                $image->scaleDown($width);
+                
+                $this->logger->info('Image scaled down to max width', [
+                    'max_width' => $width,
+                    'final_dimensions' => $image->width() . 'x' . $image->height()
+                ]);
+            } elseif (!$width && $height) {
+                // Only height specified - scale down proportionally to max height
+                $image->scaleDown(height: $height);
+                
+                $this->logger->info('Image scaled down to max height', [
+                    'max_height' => $height,
+                    'final_dimensions' => $image->width() . 'x' . $image->height()
                 ]);
             }
         }
