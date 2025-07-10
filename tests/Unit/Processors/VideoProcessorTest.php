@@ -1,0 +1,342 @@
+<?php
+
+namespace Triginarsa\MinioStorageUtils\Tests\Unit\Processors;
+
+use Triginarsa\MinioStorageUtils\Processors\VideoProcessor;
+use Triginarsa\MinioStorageUtils\Tests\TestCase;
+
+class VideoProcessorTest extends TestCase
+{
+    private VideoProcessor $processor;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/usr/bin/ffmpeg',
+            'ffprobe.binaries' => '/usr/bin/ffprobe',
+            'timeout' => 60,
+            'ffmpeg.threads' => 4,
+        ]);
+    }
+
+    public function testIsVideo(): void
+    {
+        $videoTypes = [
+            'video/mp4',
+            'video/avi',
+            'video/mov',
+            'video/wmv',
+            'video/flv',
+            'video/webm',
+            'video/mkv',
+            'video/3gp',
+        ];
+
+        foreach ($videoTypes as $mimeType) {
+            $this->assertTrue($this->processor->isVideo($mimeType));
+        }
+
+        $nonVideoTypes = [
+            'image/jpeg',
+            'application/pdf',
+            'audio/mp3',
+            'text/plain',
+        ];
+
+        foreach ($nonVideoTypes as $mimeType) {
+            $this->assertFalse($this->processor->isVideo($mimeType));
+        }
+    }
+
+    public function testProcessVideoWithCompress(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'compress' => true,
+            'quality' => 'medium',
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+
+    public function testProcessVideoWithConvertToMp4(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'convert_to_mp4' => true,
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+
+    public function testProcessVideoWithResize(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'resize' => ['width' => 640, 'height' => 480],
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+
+    public function testProcessVideoWithWatermark(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        // Create a simple watermark image
+        $watermarkPath = $this->testFilesPath . '/video-watermark.png';
+        $watermark = imagecreate(100, 30);
+        $white = imagecolorallocate($watermark, 255, 255, 255);
+        $black = imagecolorallocate($watermark, 0, 0, 0);
+        imagefill($watermark, 0, 0, $white);
+        imagestring($watermark, 3, 10, 10, 'WATERMARK', $black);
+        imagepng($watermark, $watermarkPath);
+        imagedestroy($watermark);
+        
+        $options = [
+            'watermark' => [
+                'path' => $watermarkPath,
+                'position' => 'top-right',
+                'opacity' => 0.7,
+            ],
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+        
+        // Clean up
+        unlink($watermarkPath);
+    }
+
+    public function testProcessVideoWithClip(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'clip' => [
+                'start' => 0,
+                'duration' => 10,
+            ],
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+
+    public function testProcessVideoWithMultipleOptions(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'convert_to_mp4' => true,
+            'compress' => true,
+            'quality' => 'high',
+            'resize' => ['width' => 720, 'height' => 480],
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+
+    public function testGenerateThumbnail(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $thumbnailContent = $this->processor->generateThumbnail($content, 5); // 5 seconds
+        
+        $this->assertNotEmpty($thumbnailContent);
+        $this->assertNotEquals($content, $thumbnailContent);
+    }
+
+    public function testGetVideoInfo(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $info = $this->processor->getVideoInfo($content);
+        
+        $this->assertIsArray($info);
+        $this->assertArrayHasKey('duration', $info);
+        $this->assertArrayHasKey('width', $info);
+        $this->assertArrayHasKey('height', $info);
+        $this->assertArrayHasKey('codec', $info);
+        $this->assertArrayHasKey('bitrate', $info);
+        $this->assertArrayHasKey('fps', $info);
+        $this->assertArrayHasKey('file_size', $info);
+    }
+
+    public function testProcessInvalidVideo(): void
+    {
+        $invalidContent = 'This is not a video';
+        
+        $this->expectException(\Exception::class);
+        $this->processor->process($invalidContent, []);
+    }
+
+    public function testProcessEmptyContent(): void
+    {
+        $emptyContent = '';
+        
+        $this->expectException(\Exception::class);
+        $this->processor->process($emptyContent, []);
+    }
+
+    public function testProcessVideoWithInvalidWatermark(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'watermark' => [
+                'path' => '/nonexistent/watermark.png',
+                'position' => 'center',
+            ],
+        ];
+
+        $this->expectException(\Exception::class);
+        $this->processor->process($content, $options);
+    }
+
+    public function testProcessVideoWithInvalidDimensions(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'resize' => ['width' => 0, 'height' => 0],
+        ];
+
+        $this->expectException(\Exception::class);
+        $this->processor->process($content, $options);
+    }
+
+    public function testProcessVideoWithInvalidClipDuration(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'clip' => [
+                'start' => -5,
+                'duration' => 0,
+            ],
+        ];
+
+        $this->expectException(\Exception::class);
+        $this->processor->process($content, $options);
+    }
+
+    public function testGenerateThumbnailWithInvalidTime(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $this->expectException(\Exception::class);
+        $this->processor->generateThumbnail($content, -5);
+    }
+
+    public function testGetVideoInfoFromInvalidContent(): void
+    {
+        $invalidContent = 'This is not a video';
+        
+        $this->expectException(\Exception::class);
+        $this->processor->getVideoInfo($invalidContent);
+    }
+
+    public function testFFmpegNotInstalled(): void
+    {
+        $processor = new VideoProcessor($this->logger, [
+            'ffmpeg.binaries' => '/nonexistent/ffmpeg',
+            'ffprobe.binaries' => '/nonexistent/ffprobe',
+        ]);
+
+        $this->expectException(\Exception::class);
+        $this->expectExceptionMessage('FFmpeg not found');
+        
+        $processor->process('dummy content', []);
+    }
+
+    public function testProcessVideoWithCustomBitrate(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'bitrate' => '1000k',
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+
+    public function testProcessVideoWithCustomFramerate(): void
+    {
+        $this->markTestSkipped('Requires FFmpeg binaries and actual video file');
+        
+        $videoPath = $this->getTestVideoPath();
+        $content = file_get_contents($videoPath);
+        
+        $options = [
+            'fps' => 30,
+        ];
+
+        $processedContent = $this->processor->process($content, $options);
+        
+        $this->assertNotEmpty($processedContent);
+        $this->assertNotEquals($content, $processedContent);
+    }
+} 
