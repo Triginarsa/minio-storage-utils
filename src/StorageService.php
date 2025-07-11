@@ -427,12 +427,18 @@ class StorageService implements StorageServiceInterface
             // Web optimization (resize + compress for web)
             $webOptions = array_merge(function_exists('config') ? config('minio-storage.web_optimization', []) : [], $options['web_options'] ?? []);
             $processedContent = $this->imageProcessor->optimizeForWeb($content, $webOptions);
+            
+            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $webOptions);
+            
             $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions));
             
         } elseif ($shouldCompress) {
             // Dedicated compression
             $compressionOptions = array_merge(function_exists('config') ? config('minio-storage.compression', []) : [], $options['compression_options'] ?? []);
             $processedContent = $this->imageProcessor->compressImage($content, $compressionOptions);
+            
+            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $compressionOptions);
+            
             $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions));
             
         } elseif ($shouldOptimize || isset($options['image'])) {
@@ -449,6 +455,8 @@ class StorageService implements StorageServiceInterface
             }
             
             $processedContent = $this->imageProcessor->process($content, $imageOptions);
+
+            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $imageOptions);
             
             // Security scan processed image if enabled
             if ($options['scan'] ?? false) {
@@ -474,6 +482,9 @@ class StorageService implements StorageServiceInterface
             
             $thumbnailContent = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
             $thumbnailPath = $this->buildThumbnailPath($finalPath, $thumbnailOptions);
+            
+            $thumbnailPath = $this->updatePathExtensionIfNeeded($thumbnailPath, $thumbnailOptions);
+            
             $thumbnailMimeType = $this->getOptimizedMimeType($mimeType, $thumbnailOptions);
             $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType);
         }
@@ -719,5 +730,38 @@ class StorageService implements StorageServiceInterface
         }
         
         return $originalMimeType;
+    }
+
+    private function updatePathExtensionIfNeeded(string $path, array $options): string
+    {
+        // Check if format conversion is specified
+        $newFormat = $options['convert'] ?? $options['format'] ?? null;
+        
+        if ($newFormat) {
+            $pathInfo = pathinfo($path);
+            $currentExtension = $pathInfo['extension'] ?? '';
+            
+            // Normalize format names
+            $normalizedFormat = strtolower($newFormat);
+            if ($normalizedFormat === 'jpeg') {
+                $normalizedFormat = 'jpg';
+            }
+            
+            // Only update if the format is actually different
+            if ($normalizedFormat !== strtolower($currentExtension)) {
+                $newPath = ($pathInfo['dirname'] !== '.' ? $pathInfo['dirname'] . '/' : '') . 
+                          $pathInfo['filename'] . '.' . $normalizedFormat;
+                
+                $this->logger->info('Updated file extension for format conversion', [
+                    'original_path' => $path,
+                    'new_path' => $newPath,
+                    'format' => $newFormat
+                ]);
+                
+                return $newPath;
+            }
+        }
+        
+        return $path;
     }
 } 
