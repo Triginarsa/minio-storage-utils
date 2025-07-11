@@ -178,20 +178,7 @@ class ImageProcessor
 
         // Add watermark
         if (isset($options['watermark'])) {
-            $watermarkPath = $options['watermark']['path'] ?? null;
-            $position = $options['watermark']['position'] ?? 'bottom-right';
-            $opacity = $options['watermark']['opacity'] ?? 70;
-
-            if ($watermarkPath && file_exists($watermarkPath)) {
-                $watermark = $this->imageManager->read($watermarkPath);
-                $image->place($watermark, $position, 10, 10, $opacity);
-                
-                $this->logger->info('Watermark applied', [
-                    'watermark_path' => $watermarkPath,
-                    'position' => $position,
-                    'opacity' => $opacity
-                ]);
-            }
+            $image = $this->applyWatermark($image, $options['watermark']);
         }
 
         // Strip metadata if enabled
@@ -250,6 +237,11 @@ class ImageProcessor
             default:
                 // Default to proportional scaling
                 $image->scaleDown($width, $height);
+        }
+
+        // Apply watermark to thumbnail if specified
+        if (isset($options['watermark'])) {
+            $image = $this->applyWatermark($image, $options['watermark']);
         }
 
         $quality = $options['quality'] ?? 75;
@@ -354,6 +346,117 @@ class ImageProcessor
     public function isImage(string $mimeType): bool
     {
         return strpos($mimeType, 'image/') === 0;
+    }
+
+    public function applyWatermark($image, array $watermarkOptions)
+    {
+        $watermarkPath = $watermarkOptions['path'] ?? null;
+        
+        if (!$watermarkPath || !file_exists($watermarkPath)) {
+            $this->logger->warning('Watermark path not found', ['path' => $watermarkPath]);
+            return $image;
+        }
+
+        $watermark = $this->imageManager->read($watermarkPath);
+        
+        // Get image dimensions
+        $imageWidth = $image->width();
+        $imageHeight = $image->height();
+        
+        // Get watermark configuration (merge with defaults)
+        $config = array_merge([
+            'auto_resize' => true,
+            'resize_method' => 'proportional',
+            'size_ratio' => 0.15,
+            'min_size' => 50,
+            'max_size' => 400,
+            'position' => 'bottom-right',
+            'opacity' => 70,
+            'margin' => 10,
+        ], $watermarkOptions);
+
+        // Apply watermark resizing if enabled
+        if ($config['auto_resize']) {
+            $watermark = $this->resizeWatermark($watermark, $imageWidth, $imageHeight, $config);
+        }
+
+        // Apply watermark to image
+        $image->place(
+            $watermark,
+            $config['position'],
+            $config['margin'],
+            $config['margin'],
+            $config['opacity']
+        );
+
+        $this->logger->info('Watermark applied', [
+            'watermark_path' => $watermarkPath,
+            'position' => $config['position'],
+            'opacity' => $config['opacity'],
+            'image_size' => $imageWidth . 'x' . $imageHeight,
+            'watermark_size' => $watermark->width() . 'x' . $watermark->height(),
+            'auto_resize' => $config['auto_resize'],
+            'resize_method' => $config['resize_method']
+        ]);
+
+        return $image;
+    }
+
+    private function resizeWatermark($watermark, int $imageWidth, int $imageHeight, array $config)
+    {
+        $originalWatermarkWidth = $watermark->width();
+        $originalWatermarkHeight = $watermark->height();
+
+        switch ($config['resize_method']) {
+            case 'proportional':
+                $targetSize = min($imageWidth, $imageHeight) * $config['size_ratio'];
+                $watermarkSize = max($originalWatermarkWidth, $originalWatermarkHeight);
+                $scale = $targetSize / $watermarkSize;
+                
+                $newWidth = (int)($originalWatermarkWidth * $scale);
+                $newHeight = (int)($originalWatermarkHeight * $scale);
+                break;
+                
+            case 'percentage':
+                $newWidth = (int)($imageWidth * $config['size_ratio']);
+                $newHeight = (int)($imageHeight * $config['size_ratio']);
+                break;
+                
+            case 'fixed':
+                $newWidth = $config['width'] ?? $config['max_size'];
+                $newHeight = $config['height'] ?? $config['max_size'];
+                break;
+                
+            default:
+                $targetSize = min($imageWidth, $imageHeight) * $config['size_ratio'];
+                $watermarkSize = max($originalWatermarkWidth, $originalWatermarkHeight);
+                $scale = $targetSize / $watermarkSize;
+                
+                $newWidth = (int)($originalWatermarkWidth * $scale);
+                $newHeight = (int)($originalWatermarkHeight * $scale);
+        }
+        
+        $newWidth = max($config['min_size'], min($config['max_size'], $newWidth));
+        $newHeight = max($config['min_size'], min($config['max_size'], $newHeight));
+        
+        $watermarkAspectRatio = $originalWatermarkWidth / $originalWatermarkHeight;
+        if ($newWidth / $newHeight > $watermarkAspectRatio) {
+            $newWidth = (int)($newHeight * $watermarkAspectRatio);
+        } else {
+            $newHeight = (int)($newWidth / $watermarkAspectRatio);
+        }
+        
+        $watermark->resize($newWidth, $newHeight);
+        
+        $this->logger->info('Watermark resized', [
+            'original_size' => $originalWatermarkWidth . 'x' . $originalWatermarkHeight,
+            'new_size' => $newWidth . 'x' . $newHeight,
+            'image_size' => $imageWidth . 'x' . $imageHeight,
+            'resize_method' => $config['resize_method'],
+            'size_ratio' => $config['size_ratio']
+        ]);
+        
+        return $watermark;
     }
 
     private function applyOptimizationSettings(array $options, int $width, int $height): array

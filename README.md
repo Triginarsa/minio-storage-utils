@@ -127,6 +127,16 @@ MINIO_WEB_MAX_WIDTH=1920
 MINIO_WEB_MAX_HEIGHT=1080
 MINIO_WEB_QUALITY=85
 
+# Watermark settings
+MINIO_WATERMARK_AUTO_RESIZE=true
+MINIO_WATERMARK_RESIZE_METHOD=proportional
+MINIO_WATERMARK_SIZE_RATIO=0.15
+MINIO_WATERMARK_MIN_SIZE=50
+MINIO_WATERMARK_MAX_SIZE=400
+MINIO_WATERMARK_POSITION=bottom-right
+MINIO_WATERMARK_OPACITY=70
+MINIO_WATERMARK_MARGIN=10
+
 # Thumbnail settings
 MINIO_THUMBNAIL_WIDTH=200
 MINIO_THUMBNAIL_HEIGHT=200
@@ -961,6 +971,17 @@ Generate a presigned URL for file access.
   - `strip_metadata` (bool): Remove EXIF data
   - `max_width/max_height` (int): Maximum dimensions
   - `watermark` (array): Watermark configuration
+    - `path` (string): Path to watermark image file
+    - `auto_resize` (bool): Enable automatic watermark resizing (default: true)
+    - `resize_method` (string): Resizing method - 'proportional', 'percentage', 'fixed'
+    - `size_ratio` (float): Size ratio for proportional method (default: 0.15 = 15%)
+    - `min_size` (int): Minimum watermark size in pixels (default: 50)
+    - `max_size` (int): Maximum watermark size in pixels (default: 400)
+    - `position` (string): Position - 'top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'
+    - `opacity` (int): Opacity percentage (default: 70)
+    - `margin` (int): Margin from edges in pixels (default: 10)
+    - `width` (int): Fixed width (when resize_method is 'fixed')
+    - `height` (int): Fixed height (when resize_method is 'fixed')
 
 #### Compression Options
 

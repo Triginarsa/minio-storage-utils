@@ -480,6 +480,10 @@ class StorageService implements StorageServiceInterface
                 $thumbnailOptions['optimize'] = true;
             }
             
+            if (isset($options['watermark'])) {
+                $thumbnailOptions['watermark'] = $this->prepareThumbnailWatermarkOptions($options['watermark'], $thumbnailOptions);
+            }
+            
             $thumbnailContent = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
             $thumbnailPath = $this->buildThumbnailPath($finalPath, $thumbnailOptions);
             
@@ -763,5 +767,32 @@ class StorageService implements StorageServiceInterface
         }
         
         return $path;
+    }
+
+    private function prepareThumbnailWatermarkOptions(array $watermarkOptions, array $thumbnailOptions): array
+    {
+        $defaultWatermarkConfig = function_exists('config') ? config('minio-storage.image.watermark', []) : [];
+        $watermarkConfig = array_merge($defaultWatermarkConfig, $watermarkOptions);
+        
+        if ($watermarkConfig['auto_resize'] ?? true) {
+            $thumbnailWidth = $thumbnailOptions['width'] ?? 150;
+            $thumbnailHeight = $thumbnailOptions['height'] ?? 150;
+            
+            if ($thumbnailWidth < 200 || $thumbnailHeight < 200) {
+                $watermarkConfig['size_ratio'] = ($watermarkConfig['size_ratio'] ?? 0.15) * 1.5; 
+                $watermarkConfig['min_size'] = max(30, ($watermarkConfig['min_size'] ?? 50) * 0.7); 
+            }
+
+            $maxThumbnailDimension = max($thumbnailWidth, $thumbnailHeight);
+            $watermarkConfig['max_size'] = min($watermarkConfig['max_size'] ?? 400, $maxThumbnailDimension * 0.4);
+        }
+        
+        $this->logger->info('Thumbnail watermark options prepared', [
+            'original_watermark_options' => $watermarkOptions,
+            'thumbnail_options' => $thumbnailOptions,
+            'adjusted_watermark_options' => $watermarkConfig
+        ]);
+        
+        return $watermarkConfig;
     }
 } 

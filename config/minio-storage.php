@@ -60,6 +60,18 @@ return [
             'max_height' => env('MINIO_WEB_MAX_HEIGHT', 1080),
             'quality' => env('MINIO_WEB_QUALITY', 85),
         ],
+        
+        // Watermark settings
+        'watermark' => [
+            'auto_resize' => env('MINIO_WATERMARK_AUTO_RESIZE', true),
+            'resize_method' => env('MINIO_WATERMARK_RESIZE_METHOD', 'proportional'), // proportional, fixed, percentage
+            'size_ratio' => env('MINIO_WATERMARK_SIZE_RATIO', 0.15), // 15% of image size (for proportional)
+            'min_size' => env('MINIO_WATERMARK_MIN_SIZE', 50), // Minimum watermark size in pixels
+            'max_size' => env('MINIO_WATERMARK_MAX_SIZE', 400), // Maximum watermark size in pixels
+            'position' => env('MINIO_WATERMARK_POSITION', 'bottom-right'),
+            'opacity' => env('MINIO_WATERMARK_OPACITY', 70),
+            'margin' => env('MINIO_WATERMARK_MARGIN', 10),
+        ],
     ],
 
     /*
