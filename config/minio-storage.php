@@ -9,6 +9,9 @@ return [
     | This value determines which disk configuration from filesystems.php
     | will be used for Minio storage operations.
     |
+    | Environment Variable: MINIO_STORAGE_DISK
+    | Default: minio
+    |
     */
     'disk' => env('MINIO_STORAGE_DISK', 'minio'),
 
@@ -19,6 +22,10 @@ return [
     |
     | These are the default options that will be applied to all uploads
     | unless overridden in the upload method.
+    |
+    | Environment Variables:
+    | MINIO_SECURITY_SCAN - Enable security scanning by default (default: true)
+    | MINIO_NAMING_STRATEGY - Default naming strategy: hash, slug, original (default: slug)
     |
     */
     'default_options' => [
@@ -80,6 +87,16 @@ return [
     |--------------------------------------------------------------------------
     |
     | Security scanning settings for uploaded files.
+    |
+    | Environment Variables:
+    | MINIO_SCAN_IMAGES - Enable/disable image security scanning (default: true)
+    | MINIO_SCAN_DOCUMENTS - Enable/disable document security scanning (default: true)
+    | MINIO_SCAN_VIDEOS - Enable/disable video security scanning (default: false)
+    | MINIO_SCAN_ARCHIVES - Enable/disable archive security scanning (default: true)
+    | MINIO_MAX_SCAN_SIZE - Maximum file size for scanning in bytes (default: 10MB)
+    | MINIO_SECURITY_STRICT_MODE - Enable strict security mode (default: false)
+    | MINIO_SECURITY_ALLOW_SVG - Allow SVG uploads (default: true)
+    | MINIO_SECURITY_QUARANTINE - Quarantine suspicious files (default: true)
     |
     */
     'security' => [
@@ -146,6 +163,12 @@ return [
     |
     | Configuration for FFmpeg binary paths and settings.
     |
+    | Environment Variables:
+    | FFMPEG_BINARIES - Path to FFmpeg binary (default: /usr/bin/ffmpeg)
+    | FFPROBE_BINARIES - Path to FFprobe binary (default: /usr/bin/ffprobe)
+    | FFMPEG_TIMEOUT - FFmpeg operation timeout in seconds (default: 3600)
+    | FFMPEG_THREADS - Number of threads for FFmpeg operations (default: 12)
+    |
     */
     'ffmpeg' => [
         'ffmpeg.binaries' => env('FFMPEG_BINARIES', '/usr/bin/ffmpeg'),
@@ -180,9 +203,13 @@ return [
     | Settings for URL generation.
     | Set default_expiration to null for public URLs (no expiration)
     |
+    | Environment Variables:
+    | MINIO_URL_DEFAULT_EXPIRATION - Default URL expiration in seconds (null = public URLs)
+    | MINIO_URL_MAX_EXPIRATION - Maximum URL expiration in seconds (default: 604800 = 7 days)
+    |
     */
     'url' => [
-        'default_expiration' => env('MINIO_URL_DEFAULT_EXPIRATION', null), // null = public URLs
-        'max_expiration' => env('MINIO_URL_MAX_EXPIRATION', 604800), // 7 days
+        'default_expiration' => env('MINIO_URL_DEFAULT_EXPIRATION', null),
+        'max_expiration' => env('MINIO_URL_MAX_EXPIRATION', 604800),
     ],
 ]; 

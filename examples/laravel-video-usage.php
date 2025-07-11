@@ -1,332 +1,467 @@
 <?php
 
-// In your Laravel controller
-use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
-use Triginarsa\MinioStorageUtils\Processors\VideoProcessor;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
+/**
+ * Laravel Video Management Example
+ * 
+ * This example demonstrates comprehensive video handling including:
+ * - Upload with compression and format conversion
+ * - Generate presigned URLs
+ * - Video processing (resize, clip, rotate, watermark)
+ * - Thumbnail generation
+ * - Video deletion
+ * - Batch video operations
+ * 
+ * Requirements:
+ * - FFmpeg installed on the server
+ * - php-ffmpeg/php-ffmpeg package
+ */
 
-class VideoUploadController extends Controller
+use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\Controller;
+use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
+use Illuminate\Support\Facades\Validator;
+
+class VideoController extends Controller
 {
     /**
-     * Check if video processing is available
+     * Simple video upload
      */
-    public function checkVideoProcessingAvailability()
+    public function uploadVideo(Request $request): JsonResponse
     {
-        $videoProcessor = new VideoProcessor(Log::getLogger());
-        $isAvailable = $videoProcessor->isFFmpegAvailable();
-        
-        return response()->json([
-            'video_processing_available' => $isAvailable,
-            'message' => $isAvailable 
-                ? 'Full video processing features are available'
-                : 'Video uploads work normally, but processing features require FFmpeg installation'
-        ]);
-    }
-
-    /**
-     * Simple video upload without processing (works with or without FFmpeg)
-     */
-    public function uploadVideoSimple(Request $request)
-    {
-        $request->validate([
-            'video' => 'required|file|mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp|max:102400', // 100MB max
+        $validator = Validator::make($request->all(), [
+            'video' => [
+                'required',
+                'file',
+                'mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp',
+                'max:204800' // 200MB max
+            ]
         ]);
 
-        try {
-            // Simple upload without processing - works even without FFmpeg
-            $result = MinioStorage::upload(
-                $request->file('video'),
-                null, // Auto-generate path
-                [
-                    'scan' => false, // Usually disabled for videos
-                    'naming' => 'hash',
-                    // No video processing options - just upload
-                ]
-            );
-            
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-                'message' => 'Video uploaded successfully'
-            ]);
-
-        } catch (\Exception $e) {
+        if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+                'errors' => $validator->errors()
+            ], 422);
         }
-    }
-
-    /**
-     * Video upload with processing (requires FFmpeg)
-     */
-    public function uploadVideoWithProcessing(Request $request)
-    {
-        $request->validate([
-            'video' => 'required|file|mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp|max:102400', // 100MB max
-        ]);
 
         try {
-            // Check if processing is available
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            if (!$videoProcessor->isFFmpegAvailable()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Video processing is not available. FFmpeg is required for video processing features.',
-                    'suggestion' => 'You can still upload videos without processing using the simple upload endpoint.',
-                    'install_instructions' => [
-                        'Install FFmpeg system binary: sudo apt-get install ffmpeg',
-                        'Install PHP package: composer require php-ffmpeg/php-ffmpeg'
-                    ]
-                ], 422);
-            }
-
-            // Video upload with conversion to MP4
+            $file = $request->file('video');
+            
+            // Simple upload without processing
             $result = MinioStorage::upload(
-                $request->file('video'),
-                null, // Auto-generate path
+                $file,
+                '/videos/uploads/',
                 [
-                    'scan' => false,
-                    'naming' => 'hash',
-                    'video' => [
-                        'format' => 'mp4',
-                        'compression' => 'medium',
-                        'resize' => [
-                            'width' => 1280,
-                            'height' => 720,
-                            'mode' => 'fit'
-                        ]
-                    ],
-                    'video_thumbnail' => [
-                        'width' => 320,
-                        'height' => 240,
-                        'time' => 5, // 5 seconds into video
+                    'scan' => true,
+                    'security' => [
+                        'strict_mode' => false,
+                        'scan_videos' => true,
                     ]
                 ]
             );
-            
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-                'message' => 'Video processed and uploaded successfully'
-            ]);
-
-        } catch (\Exception $e) {
-            if (strpos($e->getMessage(), 'FFmpeg') !== false) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Video processing failed: ' . $e->getMessage(),
-                    'suggestion' => 'Use the simple upload endpoint to upload without processing.',
-                    'ffmpeg_error' => true
-                ], 422);
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Smart video upload - automatically chooses processing or simple upload
-     */
-    public function uploadVideoSmart(Request $request)
-    {
-        $request->validate([
-            'video' => 'required|file|mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp|max:102400',
-            'enable_processing' => 'boolean'
-        ]);
-
-        try {
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            $processingAvailable = $videoProcessor->isFFmpegAvailable();
-            $enableProcessing = $request->input('enable_processing', true);
-
-            $options = [
-                'scan' => false,
-                'naming' => 'hash',
-            ];
-
-            // Add processing options only if available and requested
-            if ($processingAvailable && $enableProcessing) {
-                $options['video'] = [
-                    'format' => 'mp4',
-                    'compression' => 'medium',
-                    'resize' => [
-                        'width' => 1280,
-                        'height' => 720,
-                        'mode' => 'fit'
-                    ]
-                ];
-                $options['video_thumbnail'] = [
-                    'width' => 320,
-                    'height' => 240,
-                    'time' => 5
-                ];
-            }
-
-            $result = MinioStorage::upload(
-                $request->file('video'),
-                null,
-                $options
-            );
-
-            $message = $processingAvailable && $enableProcessing
-                ? 'Video processed and uploaded successfully'
-                : 'Video uploaded successfully' . ($processingAvailable ? '' : ' (processing not available)');
 
             return response()->json([
                 'success' => true,
-                'data' => $result,
-                'message' => $message,
-                'processing_applied' => $processingAvailable && $enableProcessing,
-                'processing_available' => $processingAvailable,
-                'warnings' => $result['warnings'] ?? []
+                'message' => 'Video uploaded successfully',
+                'data' => [
+                    'path' => $result['main']['path'],
+                    'original_name' => $file->getClientOriginalName(),
+                    'size' => $result['main']['size'],
+                    'size_human' => $this->formatBytes($result['main']['size']),
+                    'mime_type' => $result['main']['mime_type'],
+                    'upload_time' => now()->toISOString()
+                ],
+                'note' => 'Install FFmpeg for video processing features'
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Upload failed: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Advanced video processing with full options (requires FFmpeg)
+     * Upload video with compression
      */
-    public function compressVideo(Request $request)
+    public function uploadVideoWithCompression(Request $request): JsonResponse
     {
-        $request->validate([
-            'video' => 'required|file|mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp|max:204800', // 200MB max
-            'compression_level' => 'string|in:ultrafast,fast,medium,slow,veryslow'
+        $validator = Validator::make($request->all(), [
+            'video' => [
+                'required',
+                'file',
+                'mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp',
+                'max:204800'
+            ],
+            'compression_level' => 'nullable|in:ultrafast,fast,medium,slow,veryslow',
+            'quality' => 'nullable|in:low,medium,high,ultra'
         ]);
 
-        try {
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            if (!$videoProcessor->isFFmpegAvailable()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Video compression requires FFmpeg installation.',
-                    'alternative' => 'Use the simple upload endpoint for basic video uploads.'
-                ], 422);
-            }
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
+        try {
+            $file = $request->file('video');
             $compressionLevel = $request->input('compression_level', 'medium');
-
-            // High compression video upload
+            $quality = $request->input('quality', 'medium');
+            
             $result = MinioStorage::upload(
-                $request->file('video'),
-                'compressed-videos/' . time() . '.mp4',
+                $file,
+                '/videos/compressed/',
                 [
+                    'compress' => true,
                     'video' => [
-                        'format' => 'mp4',
                         'compression' => $compressionLevel,
-                        'video_bitrate' => '1000k', // Lower bitrate for smaller files
-                        'audio_bitrate' => '96k',
-                        'resize' => [
-                            'width' => 1280,
-                            'height' => 720,
-                            'mode' => 'fit'
-                        ],
-                        'clip' => [
-                            'start' => '00:00:00',
-                            'duration' => '00:05:00' // Limit to 5 minutes
-                        ]
+                        'quality' => $quality,
+                        'format' => 'mp4',
+                        'video_bitrate' => $this->getBitrate($quality),
+                        'audio_bitrate' => 128,
                     ],
-                    'video_thumbnail' => [
+                    'thumbnail' => [
                         'width' => 320,
                         'height' => 240,
-                        'time' => '00:00:10'
+                        'time' => 5, // Generate thumbnail at 5 seconds
                     ]
                 ]
             );
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $result,
-                'message' => 'Video compressed and uploaded successfully',
-                'compression_level' => $compressionLevel
+                'message' => 'Video compressed successfully',
+                'data' => [
+                    'main_video' => [
+                        'path' => $result['main']['path'],
+                        'size' => $result['main']['size'],
+                        'size_human' => $this->formatBytes($result['main']['size']),
+                    ],
+                    'thumbnail' => isset($result['thumbnail']) ? [
+                        'path' => $result['thumbnail']['path'],
+                        'size' => $result['thumbnail']['size'],
+                    ] : null,
+                    'compression_info' => [
+                        'original_size' => $file->getSize(),
+                        'compressed_size' => $result['main']['size'],
+                        'compression_ratio' => round((1 - ($result['main']['size'] / $file->getSize())) * 100, 2) . '%',
+                        'compression_level' => $compressionLevel,
+                        'quality' => $quality
+                    ]
+                ]
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Compression failed: ' . $e->getMessage(),
+                'note' => 'Ensure FFmpeg is installed and configured'
             ], 500);
         }
     }
 
     /**
-     * Video upload with watermark (requires FFmpeg)
+     * Convert video to different format
      */
-    public function uploadWithWatermark(Request $request)
+    public function convertVideo(Request $request): JsonResponse
     {
-        $request->validate([
-            'video' => 'required|file|mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp|max:102400',
-            'watermark_position' => 'string|in:top-left,top-right,bottom-left,bottom-right,center'
+        $validator = Validator::make($request->all(), [
+            'video' => [
+                'required',
+                'file',
+                'mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp',
+                'max:204800'
+            ],
+            'target_format' => 'required|in:mp4,webm',
+            'quality' => 'nullable|in:low,medium,high'
         ]);
 
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            if (!$videoProcessor->isFFmpegAvailable()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Video watermarking requires FFmpeg installation.',
-                    'alternative' => 'Use the simple upload endpoint for basic video uploads.'
-                ], 422);
-            }
-
-            $watermarkPath = public_path('watermark.png');
-            if (!file_exists($watermarkPath)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Watermark image not found at: ' . $watermarkPath
-                ], 400);
-            }
-
-            $position = $request->input('watermark_position', 'bottom-right');
-
-            // Video upload with watermark
+            $file = $request->file('video');
+            $targetFormat = $request->input('target_format');
+            $quality = $request->input('quality', 'medium');
+            
             $result = MinioStorage::upload(
-                $request->file('video'),
-                'watermarked-videos/' . time() . '.mp4',
+                $file,
+                '/videos/converted/',
                 [
                     'video' => [
-                        'format' => 'mp4',
+                        'format' => $targetFormat,
+                        'quality' => $quality,
                         'compression' => 'medium',
-                        'watermark' => [
-                            'path' => $watermarkPath,
-                            'position' => $position
-                        ],
-                        'resize' => [
-                            'width' => 1280,
-                            'height' => 720,
-                            'mode' => 'fit'
-                        ]
+                        'video_bitrate' => $this->getBitrate($quality),
+                        'audio_bitrate' => 128,
                     ],
-                    'video_thumbnail' => [
+                    'thumbnail' => [
                         'width' => 480,
                         'height' => 360,
-                        'time' => 3
+                        'time' => '00:00:03',
                     ]
                 ]
             );
-            
+
             return response()->json([
                 'success' => true,
-                'data' => $result,
-                'message' => 'Video with watermark uploaded successfully',
-                'watermark_position' => $position
+                'message' => "Video converted to {$targetFormat} successfully",
+                'data' => [
+                    'converted_video' => [
+                        'path' => $result['main']['path'],
+                        'format' => $targetFormat,
+                        'size' => $result['main']['size'],
+                        'size_human' => $this->formatBytes($result['main']['size']),
+                    ],
+                    'thumbnail' => isset($result['thumbnail']) ? [
+                        'path' => $result['thumbnail']['path'],
+                        'size' => $result['thumbnail']['size'],
+                    ] : null,
+                    'conversion_info' => [
+                        'original_format' => $file->getClientOriginalExtension(),
+                        'target_format' => $targetFormat,
+                        'quality' => $quality,
+                        'original_size' => $file->getSize(),
+                        'converted_size' => $result['main']['size']
+                    ]
+                ]
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Conversion failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Advanced video processing (clip, resize, rotate)
+     */
+    public function processVideo(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'video' => [
+                'required',
+                'file',
+                'mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp',
+                'max:204800'
+            ],
+            'start_time' => 'nullable|string', // Format: 00:01:30
+            'duration' => 'nullable|string',   // Format: 00:02:00
+            'width' => 'nullable|integer|min:240|max:3840',
+            'height' => 'nullable|integer|min:240|max:2160',
+            'rotate' => 'nullable|in:90,180,270'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $file = $request->file('video');
+            $options = ['video' => ['format' => 'mp4', 'compression' => 'medium']];
+            
+            // Add clipping if specified
+            if ($request->has('start_time') || $request->has('duration')) {
+                $options['video']['clip'] = [];
+                if ($request->has('start_time')) {
+                    $options['video']['clip']['start'] = $request->input('start_time');
+                }
+                if ($request->has('duration')) {
+                    $options['video']['clip']['duration'] = $request->input('duration');
+                }
+            }
+            
+            // Add resizing if specified
+            if ($request->has('width') || $request->has('height')) {
+                $options['video']['resize'] = [
+                    'width' => $request->input('width'),
+                    'height' => $request->input('height'),
+                    'mode' => 'fit'
+                ];
+            }
+            
+            // Add rotation if specified
+            if ($request->has('rotate')) {
+                $options['video']['rotate'] = (int) $request->input('rotate');
+            }
+            
+            // Generate thumbnail
+            $options['thumbnail'] = [
+                'width' => 320,
+                'height' => 240,
+                'time' => $request->input('start_time', '00:00:05')
+            ];
+            
+            $result = MinioStorage::upload($file, '/videos/processed/', $options);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Video processed successfully',
+                'data' => [
+                    'processed_video' => [
+                        'path' => $result['main']['path'],
+                        'size' => $result['main']['size'],
+                        'size_human' => $this->formatBytes($result['main']['size']),
+                    ],
+                    'thumbnail' => isset($result['thumbnail']) ? [
+                        'path' => $result['thumbnail']['path'],
+                        'size' => $result['thumbnail']['size'],
+                    ] : null,
+                    'processing_applied' => [
+                        'clipping' => $request->has('start_time') || $request->has('duration'),
+                        'resizing' => $request->has('width') || $request->has('height'),
+                        'rotation' => $request->has('rotate'),
+                        'clip_info' => [
+                            'start_time' => $request->input('start_time'),
+                            'duration' => $request->input('duration')
+                        ],
+                        'resize_info' => [
+                            'width' => $request->input('width'),
+                            'height' => $request->input('height')
+                        ],
+                        'rotation_angle' => $request->input('rotate')
+                    ]
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Processing failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get video URL with expiration
+     */
+    public function getVideoUrl(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'path' => 'required|string',
+            'expiration' => 'nullable|integer|min:60|max:604800', // 1 minute to 7 days
+            'include_metadata' => 'nullable|boolean'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $path = $request->input('path');
+            $expiration = $request->input('expiration', 3600); // Default 1 hour
+            $includeMetadata = $request->input('include_metadata', false);
+
+            if (!MinioStorage::fileExists($path)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Video not found'
+                ], 404);
+            }
+
+            $url = MinioStorage::getUrl($path, $expiration);
+            $response = [
+                'success' => true,
+                'data' => [
+                    'video_url' => $url,
+                    'expires_in' => $expiration,
+                    'expires_at' => now()->addSeconds($expiration)->toISOString(),
+                ]
+            ];
+
+            if ($includeMetadata) {
+                $metadata = MinioStorage::getMetadata($path);
+                $response['data']['video_info'] = [
+                    'path' => $path,
+                    'size' => $metadata['size'],
+                    'size_human' => $this->formatBytes($metadata['size']),
+                    'mime_type' => $metadata['mime_type'],
+                    'last_modified' => date('c', $metadata['last_modified'])
+                ];
+            }
+
+            return response()->json($response);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate URL: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete video
+     */
+    public function deleteVideo(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'path' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        try {
+            $path = $request->input('path');
+
+            if (!MinioStorage::fileExists($path)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Video not found'
+                ], 404);
+            }
+
+            // Get metadata before deletion
+            $metadata = MinioStorage::getMetadata($path);
+            
+            // Delete the video
+            $deleted = MinioStorage::delete($path);
+
+            if ($deleted) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Video deleted successfully',
+                    'data' => [
+                        'deleted_path' => $path,
+                        'deleted_at' => now()->toISOString(),
+                        'file_info' => [
+                            'size' => $metadata['size'],
+                            'size_human' => $this->formatBytes($metadata['size']),
+                            'mime_type' => $metadata['mime_type']
+                        ]
+                    ]
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to delete video'
+                ], 500);
+            }
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Deletion failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -334,100 +469,116 @@ class VideoUploadController extends Controller
     /**
      * Batch video upload with different processing options
      */
-    public function batchUploadVideos(Request $request)
+    public function batchUploadVideos(Request $request): JsonResponse
     {
-        $request->validate([
-            'videos' => 'required|array|min:1|max:5',
-            'videos.*' => 'required|file|mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp|max:102400'
+        $validator = Validator::make($request->all(), [
+            'videos' => 'required|array|max:3', // Max 3 videos at once
+            'videos.*' => [
+                'required',
+                'file',
+                'mimes:mp4,avi,mov,wmv,flv,webm,mkv,3gp',
+                'max:204800'
+            ],
+            'apply_compression' => 'nullable|boolean',
+            'compression_level' => 'nullable|in:ultrafast,fast,medium,slow,veryslow'
         ]);
 
-        try {
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            $processingAvailable = $videoProcessor->isFFmpegAvailable();
-            
-            $results = [];
-            $processedCount = 0;
-            $uploadedCount = 0;
-
-            foreach ($request->file('videos') as $index => $video) {
-                try {
-                    $options = [
-                        'scan' => false,
-                        'naming' => 'hash',
-                    ];
-
-                    // Add processing options only if available
-                    if ($processingAvailable) {
-                        $options['video'] = [
-                            'format' => 'mp4',
-                            'compression' => 'fast', // Faster for batch processing
-                            'resize' => [
-                                'width' => 1280,
-                                'height' => 720,
-                                'mode' => 'fit'
-                            ]
-                        ];
-                        $options['video_thumbnail'] = [
-                            'width' => 320,
-                            'height' => 240,
-                            'time' => 5
-                        ];
-                    }
-
-                    $result = MinioStorage::upload(
-                        $video,
-                        "batch-videos/" . time() . "-{$index}.mp4",
-                        $options
-                    );
-
-                    $results[] = [
-                        'index' => $index,
-                        'success' => true,
-                        'data' => $result,
-                        'processed' => $processingAvailable
-                    ];
-
-                    if ($processingAvailable) {
-                        $processedCount++;
-                    }
-                    $uploadedCount++;
-
-                } catch (\Exception $e) {
-                    $results[] = [
-                        'index' => $index,
-                        'success' => false,
-                        'error' => $e->getMessage()
-                    ];
-                }
-            }
-
-            return response()->json([
-                'success' => true,
-                'data' => $results,
-                'summary' => [
-                    'total' => count($request->file('videos')),
-                    'uploaded' => $uploadedCount,
-                    'processed' => $processedCount,
-                    'processing_available' => $processingAvailable
-                ],
-                'message' => "Batch upload completed: {$uploadedCount} videos uploaded" . 
-                           ($processingAvailable ? ", {$processedCount} processed" : " (processing not available)")
-            ]);
-
-        } catch (\Exception $e) {
+        if ($validator->fails()) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+                'errors' => $validator->errors()
+            ], 422);
         }
+
+        $results = [];
+        $errors = [];
+        $applyCompression = $request->input('apply_compression', false);
+        $compressionLevel = $request->input('compression_level', 'medium');
+
+        foreach ($request->file('videos') as $index => $file) {
+            try {
+                $options = ['scan' => true];
+                
+                if ($applyCompression) {
+                    $options['compress'] = true;
+                    $options['video'] = [
+                        'compression' => $compressionLevel,
+                        'format' => 'mp4',
+                        'quality' => 'medium'
+                    ];
+                    $options['thumbnail'] = [
+                        'width' => 320,
+                        'height' => 240,
+                        'time' => 3
+                    ];
+                }
+
+                $result = MinioStorage::upload($file, '/videos/batch/', $options);
+
+                $results[] = [
+                    'index' => $index,
+                    'original_name' => $file->getClientOriginalName(),
+                    'path' => $result['main']['path'],
+                    'size' => $result['main']['size'],
+                    'size_human' => $this->formatBytes($result['main']['size']),
+                    'mime_type' => $result['main']['mime_type'],
+                    'compression_applied' => $applyCompression,
+                    'thumbnail_path' => $result['thumbnail']['path'] ?? null,
+                    'status' => 'success'
+                ];
+
+            } catch (\Exception $e) {
+                $errors[] = [
+                    'index' => $index,
+                    'original_name' => $file->getClientOriginalName(),
+                    'error' => $e->getMessage(),
+                    'status' => 'failed'
+                ];
+            }
+        }
+
+        return response()->json([
+            'success' => count($errors) === 0,
+            'message' => sprintf(
+                'Batch upload completed: %d successful, %d failed',
+                count($results),
+                count($errors)
+            ),
+            'data' => [
+                'successful_uploads' => $results,
+                'failed_uploads' => $errors,
+                'processing_options' => [
+                    'compression_applied' => $applyCompression,
+                    'compression_level' => $compressionLevel
+                ],
+                'summary' => [
+                    'total_videos' => count($request->file('videos')),
+                    'successful' => count($results),
+                    'failed' => count($errors)
+                ]
+            ]
+        ]);
     }
 
     /**
-     * Get video metadata (enhanced when FFmpeg is available)
+     * Get video information and metadata
      */
-    public function getVideoInfo($path)
+    public function getVideoInfo(Request $request): JsonResponse
     {
+        $validator = Validator::make($request->all(), [
+            'path' => 'required|string'
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
         try {
+            $path = $request->input('path');
+
             if (!MinioStorage::fileExists($path)) {
                 return response()->json([
                     'success' => false,
@@ -436,106 +587,230 @@ class VideoUploadController extends Controller
             }
 
             $metadata = MinioStorage::getMetadata($path);
-            $url = MinioStorage::getUrl($path, 3600);
-
-            // Check if enhanced metadata is available
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            $enhancedMetadata = $videoProcessor->isFFmpegAvailable();
 
             return response()->json([
                 'success' => true,
-                'data' => array_merge($metadata, ['url' => $url]),
-                'enhanced_metadata_available' => $enhancedMetadata,
-                'note' => $enhancedMetadata ? 'Full video metadata available' : 'Basic metadata only (FFmpeg not available)'
+                'data' => [
+                    'path' => $path,
+                    'size' => $metadata['size'],
+                    'size_human' => $this->formatBytes($metadata['size']),
+                    'mime_type' => $metadata['mime_type'],
+                    'file_type' => $this->getVideoTypeFromMime($metadata['mime_type']),
+                    'last_modified' => date('c', $metadata['last_modified']),
+                    'visibility' => $metadata['visibility'],
+                    // Video-specific metadata (if available)
+                    'duration' => $metadata['duration'] ?? null,
+                    'video_info' => $metadata['video'] ?? null,
+                    'audio_info' => $metadata['audio'] ?? null,
+                    'ffmpeg_available' => $metadata['video_processing_available'] ?? true
+                ]
             ]);
 
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Failed to get video info: ' . $e->getMessage()
             ], 500);
         }
     }
 
     /**
-     * Convert video format (requires FFmpeg)
+     * Helper method to get bitrate based on quality
      */
-    public function convertVideoFormat(Request $request, $path)
+    private function getBitrate(string $quality): int
     {
-        $request->validate([
-            'target_format' => 'required|string|in:mp4,webm'
-        ]);
+        $bitrates = [
+            'low' => 800,
+            'medium' => 1500,
+            'high' => 3000,
+            'ultra' => 5000
+        ];
 
-        try {
-            $videoProcessor = new VideoProcessor(Log::getLogger());
-            if (!$videoProcessor->isFFmpegAvailable()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Video format conversion requires FFmpeg installation.'
-                ], 422);
-            }
+        return $bitrates[$quality] ?? 1500;
+    }
 
-            if (!MinioStorage::fileExists($path)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Source video not found'
-                ], 404);
-            }
-
-            $targetFormat = $request->input('target_format');
-            $outputPath = pathinfo($path, PATHINFO_DIRNAME) . '/' . 
-                         pathinfo($path, PATHINFO_FILENAME) . '_converted.' . $targetFormat;
-
-            // Download source video temporarily
-            $sourceContent = MinioStorage::getUrl($path);
-            
-            // Process conversion
-            $result = MinioStorage::upload(
-                $sourceContent,
-                $outputPath,
-                [
-                    'video' => [
-                        'format' => $targetFormat,
-                        'compression' => 'medium'
-                    ]
-                ]
-            );
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
-                'message' => "Video converted to {$targetFormat} successfully",
-                'source_path' => $path,
-                'converted_path' => $outputPath
-            ]);
-
-        } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => $e->getMessage()
-            ], 500);
+    /**
+     * Helper method to format bytes to human readable format
+     */
+    private function formatBytes(int $bytes): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB'];
+        $i = 0;
+        
+        while ($bytes >= 1024 && $i < 3) {
+            $bytes /= 1024;
+            $i++;
         }
+        
+        return round($bytes, 2) . ' ' . $units[$i];
+    }
+
+    /**
+     * Helper method to get video type from MIME type
+     */
+    private function getVideoTypeFromMime(string $mimeType): string
+    {
+        $types = [
+            'video/mp4' => 'MP4 Video',
+            'video/avi' => 'AVI Video',
+            'video/quicktime' => 'QuickTime Video',
+            'video/x-msvideo' => 'AVI Video',
+            'video/x-ms-wmv' => 'Windows Media Video',
+            'video/x-flv' => 'Flash Video',
+            'video/webm' => 'WebM Video',
+            'video/3gpp' => '3GP Video',
+            'video/x-matroska' => 'Matroska Video',
+        ];
+
+        return $types[$mimeType] ?? 'Unknown Video Type';
     }
 }
 
-// Example routes (add to your routes/web.php or routes/api.php)
-/*
-Route::prefix('video')->group(function () {
-    // Check availability
-    Route::get('processing-status', [VideoUploadController::class, 'checkVideoProcessingAvailability']);
-    
-    // Upload endpoints
-    Route::post('upload/simple', [VideoUploadController::class, 'uploadVideoSimple']);
-    Route::post('upload/processed', [VideoUploadController::class, 'uploadVideoWithProcessing']);
-    Route::post('upload/smart', [VideoUploadController::class, 'uploadVideoSmart']);
-    Route::post('upload/batch', [VideoUploadController::class, 'batchUploadVideos']);
-    
-    // Processing endpoints (require FFmpeg)
-    Route::post('compress', [VideoUploadController::class, 'compressVideo']);
-    Route::post('watermark', [VideoUploadController::class, 'uploadWithWatermark']);
-    Route::post('convert/{path}', [VideoUploadController::class, 'convertVideoFormat'])->where('path', '.*');
-    
-    // Info endpoint
-    Route::get('info/{path}', [VideoUploadController::class, 'getVideoInfo'])->where('path', '.*');
-});
-*/ 
+/**
+ * ROUTES EXAMPLE (add to routes/web.php or routes/api.php):
+ * 
+ * Route::prefix('videos')->group(function () {
+ *     Route::post('upload', [VideoController::class, 'uploadVideo']);
+ *     Route::post('upload-compress', [VideoController::class, 'uploadVideoWithCompression']);
+ *     Route::post('convert', [VideoController::class, 'convertVideo']);
+ *     Route::post('process', [VideoController::class, 'processVideo']);
+ *     Route::post('url', [VideoController::class, 'getVideoUrl']);
+ *     Route::delete('delete', [VideoController::class, 'deleteVideo']);
+ *     Route::post('batch-upload', [VideoController::class, 'batchUploadVideos']);
+ *     Route::get('info', [VideoController::class, 'getVideoInfo']);
+ * });
+ */
+
+/**
+ * FRONTEND USAGE EXAMPLES:
+ * 
+ * 1. Simple upload:
+ * POST /videos/upload
+ * Content-Type: multipart/form-data
+ * Body: video (file)
+ * 
+ * 2. Upload with compression:
+ * POST /videos/upload-compress
+ * Content-Type: multipart/form-data
+ * Body: video (file), compression_level (ultrafast|fast|medium|slow|veryslow), quality (low|medium|high|ultra)
+ * 
+ * 3. Convert video format:
+ * POST /videos/convert
+ * Content-Type: multipart/form-data
+ * Body: video (file), target_format (mp4|webm), quality (low|medium|high)
+ * 
+ * 4. Advanced processing:
+ * POST /videos/process
+ * Content-Type: multipart/form-data
+ * Body: video (file), start_time (00:01:30), duration (00:02:00), width (1280), height (720), rotate (90|180|270)
+ * 
+ * 5. Get video URL:
+ * POST /videos/url
+ * Content-Type: application/json
+ * Body: {"path": "/videos/uploads/filename.mp4", "expiration": 3600, "include_metadata": true}
+ * 
+ * 6. Delete video:
+ * DELETE /videos/delete
+ * Content-Type: application/json
+ * Body: {"path": "/videos/uploads/filename.mp4"}
+ * 
+ * 7. Get video info:
+ * GET /videos/info?path=/videos/uploads/filename.mp4
+ * 
+ * 8. Batch upload:
+ * POST /videos/batch-upload
+ * Content-Type: multipart/form-data
+ * Body: videos[] (multiple files), apply_compression (true|false), compression_level (medium)
+ */
+
+/**
+ * JAVASCRIPT FRONTEND EXAMPLE:
+ * 
+ * // Upload video with compression
+ * const uploadVideoWithCompression = async (file, compressionLevel = 'medium', quality = 'medium') => {
+ *     const formData = new FormData();
+ *     formData.append('video', file);
+ *     formData.append('compression_level', compressionLevel);
+ *     formData.append('quality', quality);
+ *     
+ *     const response = await fetch('/videos/upload-compress', {
+ *         method: 'POST',
+ *         body: formData,
+ *         headers: {
+ *             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+ *         }
+ *     });
+ *     
+ *     return response.json();
+ * };
+ * 
+ * // Convert video format
+ * const convertVideo = async (file, targetFormat = 'mp4', quality = 'medium') => {
+ *     const formData = new FormData();
+ *     formData.append('video', file);
+ *     formData.append('target_format', targetFormat);
+ *     formData.append('quality', quality);
+ *     
+ *     const response = await fetch('/videos/convert', {
+ *         method: 'POST',
+ *         body: formData,
+ *         headers: {
+ *             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+ *         }
+ *     });
+ *     
+ *     return response.json();
+ * };
+ * 
+ * // Get video download URL
+ * const getVideoUrl = async (path, expiration = 3600) => {
+ *     const response = await fetch('/videos/url', {
+ *         method: 'POST',
+ *         headers: {
+ *             'Content-Type': 'application/json',
+ *             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+ *         },
+ *         body: JSON.stringify({ path, expiration, include_metadata: true })
+ *     });
+ *     
+ *     return response.json();
+ * };
+ * 
+ * // Delete video
+ * const deleteVideo = async (path) => {
+ *     const response = await fetch('/videos/delete', {
+ *         method: 'DELETE',
+ *         headers: {
+ *             'Content-Type': 'application/json',
+ *             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+ *         },
+ *         body: JSON.stringify({ path })
+ *     });
+ *     
+ *     return response.json();
+ * };
+ */
+
+/**
+ * INSTALLATION REQUIREMENTS:
+ * 
+ * 1. Install FFmpeg on your server:
+ *    Ubuntu/Debian: sudo apt-get install ffmpeg
+ *    CentOS/RHEL: sudo yum install ffmpeg
+ *    macOS: brew install ffmpeg
+ * 
+ * 2. Install php-ffmpeg package:
+ *    composer require php-ffmpeg/php-ffmpeg
+ * 
+ * 3. Verify installation:
+ *    ffmpeg -version
+ *    ffprobe -version
+ * 
+ * 4. Configure FFmpeg paths in config/minio-storage.php:
+ *    'ffmpeg' => [
+ *        'ffmpeg.binaries' => '/usr/bin/ffmpeg',
+ *        'ffprobe.binaries' => '/usr/bin/ffprobe',
+ *        'timeout' => 3600,
+ *        'ffmpeg.threads' => 12,
+ *    ]
+ */
