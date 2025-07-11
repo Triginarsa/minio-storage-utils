@@ -360,13 +360,16 @@ class ImageProcessor
     {
         $totalPixels = $width * $height;
         
-        // Adjust quality based on image size
-        if ($totalPixels > 8000000) { // > 8MP
-            $options['quality'] = $options['quality'] ?? 75;
-        } elseif ($totalPixels > 4000000) { // > 4MP
-            $options['quality'] = $options['quality'] ?? 80;
-        } else {
-            $options['quality'] = $options['quality'] ?? 85;
+        // Only set quality if user hasn't explicitly provided one
+        if (!isset($options['quality'])) {
+            // Adjust quality based on image size
+            if ($totalPixels > 8000000) { // > 8MP
+                $options['quality'] = 75;
+            } elseif ($totalPixels > 4000000) { // > 4MP
+                $options['quality'] = 80;
+            } else {
+                $options['quality'] = 85;
+            }
         }
 
         // Auto-select format based on content
@@ -379,6 +382,14 @@ class ImageProcessor
 
     private function applySmartCompression(array $options, $image): array
     {
+        // Only apply smart compression if user hasn't explicitly set quality
+        if (isset($options['quality'])) {
+            $this->logger->info('Skipping smart compression - user quality setting detected', [
+                'user_quality' => $options['quality']
+            ]);
+            return $options;
+        }
+
         // Analyze image characteristics
         $width = $image->width();
         $height = $image->height();
@@ -387,13 +398,21 @@ class ImageProcessor
         // Adjust compression based on image characteristics
         if ($aspectRatio > 2 || $aspectRatio < 0.5) {
             // Panoramic or very tall images - use higher quality
-            $options['quality'] = max($options['quality'] ?? 85, 85);
-        }
-        
-        if ($width > 3000 || $height > 3000) {
+            $options['quality'] = 85;
+        } elseif ($width > 3000 || $height > 3000) {
             // Very high resolution - can use lower quality
-            $options['quality'] = min($options['quality'] ?? 80, 80);
+            $options['quality'] = 80;
+        } else {
+            // Default quality for smart compression
+            $options['quality'] = 85;
         }
+
+        $this->logger->info('Smart compression applied', [
+            'calculated_quality' => $options['quality'],
+            'width' => $width,
+            'height' => $height,
+            'aspect_ratio' => $aspectRatio
+        ]);
 
         return $options;
     }
@@ -404,17 +423,32 @@ class ImageProcessor
         if (isset($options['quality_preset'])) {
             $preset = $options['quality_preset'];
             if (isset(self::QUALITY_PRESETS[$preset])) {
-                return self::QUALITY_PRESETS[$preset];
+                $quality = self::QUALITY_PRESETS[$preset];
+                $this->logger->info('Quality determined from preset', [
+                    'preset' => $preset,
+                    'quality' => $quality
+                ]);
+                return $quality;
             }
         }
 
         // Use explicit quality if provided
         if (isset($options['quality'])) {
-            return max(1, min(100, $options['quality']));
+            $quality = max(1, min(100, $options['quality']));
+            $this->logger->info('Quality from user options', [
+                'original_quality' => $options['quality'],
+                'clamped_quality' => $quality
+            ]);
+            return $quality;
         }
 
         // Use format default
-        return self::FORMAT_SETTINGS[$format]['quality'] ?? 85;
+        $quality = self::FORMAT_SETTINGS[$format]['quality'] ?? 85;
+        $this->logger->info('Quality from format default', [
+            'format' => $format,
+            'quality' => $quality
+        ]);
+        return $quality;
     }
 
     private function encodeWithAdvancedCompression($image, string $format, int $quality, array $options)

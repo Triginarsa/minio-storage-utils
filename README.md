@@ -301,7 +301,7 @@ $result = MinioStorage::upload($image, null, [
             'method' => 'fit' // fit, crop, fill, stretch, proportional, scale
         ],
         'convert' => 'jpg',
-        'quality' => 85,
+        'quality' => 85, // User quality setting - will NOT be overridden
         'auto_orient' => true,
         'strip_metadata' => true,
         'max_width' => 2048,
@@ -323,6 +323,50 @@ $result = MinioStorage::upload($image, null, [
     ]
 ]);
 ```
+
+#### Quality Settings Priority
+
+The system respects quality settings in this order:
+1. **User-defined quality** (in `'image'` options) - highest priority, never overridden
+2. Quality preset (e.g., 'low', 'medium', 'high')
+3. Smart compression calculations (only if no user quality set)
+4. Format defaults
+
+```php
+// Explicit quality - guaranteed to be used
+'image' => ['quality' => 10] // Will use quality 10
+
+// Quality preset - also guaranteed
+'image' => ['quality_preset' => 'low'] // Uses quality 60
+
+// No quality set - uses smart compression or defaults
+'image' => ['optimize' => true] // Quality determined automatically
+```
+
+#### Debugging Quality Issues
+
+If your quality settings aren't working as expected, check the logs for quality determination:
+
+```php
+// Enable logging to see what quality is actually used
+$result = MinioStorage::upload($image, null, [
+    'image' => [
+        'quality' => 10, // Your explicit quality setting
+        'convert' => 'jpg'
+    ]
+]);
+
+// Check your Laravel logs for entries like:
+// "Quality from user options" - your setting was used
+// "Quality from format default" - your setting was ignored (check options structure)
+// "Smart compression applied" - automatic quality was calculated
+```
+
+**Common Issues:**
+- Quality set in wrong location (should be in `'image'` array)
+- Config defaults overriding (now fixed)
+- Smart compression overriding (now fixed)  
+- PNG format ignoring quality (PNG uses different compression)
 
 #### Advanced Image Compression
 

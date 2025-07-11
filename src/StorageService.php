@@ -407,9 +407,12 @@ class StorageService implements StorageServiceInterface
             
         } elseif ($shouldOptimize || isset($options['image'])) {
             // General image processing with optimization
-            $imageOptions = array_merge(function_exists('config') ? config('minio-storage.image', []) : [], $options['image'] ?? []);
+            $defaultImageOptions = function_exists('config') ? config('minio-storage.image', []) : [];
             
-            // Enable optimization if requested
+            // Merge user options AFTER defaults to ensure user settings take precedence
+            $imageOptions = array_merge($defaultImageOptions, $options['image'] ?? []);
+            
+            // Enable optimization if requested (but don't override user quality settings)
             if ($shouldOptimize) {
                 $imageOptions['optimize'] = true;
                 $imageOptions['smart_compression'] = $options['smart_compression'] ?? true;
