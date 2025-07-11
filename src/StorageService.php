@@ -229,7 +229,7 @@ class StorageService implements StorageServiceInterface
 
             $command = $this->s3Client->getCommand('GetObject', [
                 'Bucket' => $this->bucket,
-                'Key' => $path
+                'Key' => ltrim($path, '/')
             ]);
 
             $request = $this->s3Client->createPresignedRequest($command, "+{$expiration} seconds");
@@ -266,8 +266,9 @@ class StorageService implements StorageServiceInterface
 
         try {
             $endpoint = rtrim(config("filesystems.disks.minio.endpoint"), '/');
-            $bucket = config("filesystems.disks.minio.bucket");
-            $publicUrl = "{$endpoint}/{$bucket}/" . ltrim($path, '/');
+            $bucket = rtrim(config("filesystems.disks.minio.bucket"), '/');
+            $cleanPath = ltrim($path, '/');
+            $publicUrl = "{$endpoint}/{$bucket}/" . $cleanPath;
 
             $this->logger->info('Public URL generated', ['path' => $path, 'url' => $publicUrl]);
             return $publicUrl;
