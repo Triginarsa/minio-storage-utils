@@ -604,10 +604,10 @@ class StorageService implements StorageServiceInterface
 
     private function buildFinalPath(string $destinationPath, string $filename, array $options): string
     {
-        $directory = dirname($destinationPath);
+        $directory = rtrim($destinationPath, '/');
         
         if ($options['preserve_structure'] ?? true) {
-            return $directory === '.' ? $filename : $directory . '/' . $filename;
+            return $directory === '' ? $filename : $directory . '/' . $filename;
         }
         
         return $filename;
