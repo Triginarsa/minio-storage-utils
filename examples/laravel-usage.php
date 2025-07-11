@@ -360,7 +360,7 @@ class FileUploadController extends Controller
             }
 
             $metadata = MinioStorage::getMetadata($path);
-            $url = MinioStorage::getUrl($path, 3600);
+            $url = MinioStorage::getUrl($path); // Uses config default (public URL if MINIO_URL_DEFAULT_EXPIRATION is null)
 
             return response()->json([
                 'success' => true,

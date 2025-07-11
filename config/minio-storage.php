@@ -23,7 +23,7 @@ return [
     */
     'default_options' => [
         'scan' => env('MINIO_SECURITY_SCAN', true),
-        'naming' => env('MINIO_NAMING_STRATEGY', 'hash'), // hash, slug, original
+        'naming' => env('MINIO_NAMING_STRATEGY', 'slug'), // hash, slug, original
         'preserve_structure' => true,
     ],
 
@@ -32,54 +32,53 @@ return [
     | Image Processing Options
     |--------------------------------------------------------------------------
     |
-    | Default settings for image processing operations.
+    | Image processing settings with compression and web optimization.
     |
     */
     'image' => [
         'quality' => env('MINIO_IMAGE_QUALITY', 85),
         'max_width' => env('MINIO_IMAGE_MAX_WIDTH', 2048),
         'max_height' => env('MINIO_IMAGE_MAX_HEIGHT', 2048),
-        'auto_orient' => true,
-        'strip_metadata' => true,
+        'auto_orient' => env('MINIO_IMAGE_AUTO_ORIENT', true),
+        'strip_metadata' => env('MINIO_IMAGE_STRIP_METADATA', true),
         'optimize' => env('MINIO_IMAGE_OPTIMIZE', false),
-        'smart_compression' => env('MINIO_IMAGE_SMART_COMPRESSION', false),
+        'format' => env('MINIO_IMAGE_FORMAT', 'jpg'),
+        'progressive' => env('MINIO_IMAGE_PROGRESSIVE', true),
+        
+        // Compression settings
+        'compression' => [
+            'quality' => env('MINIO_COMPRESSION_QUALITY', 80),
+            'target_size' => env('MINIO_COMPRESSION_TARGET_SIZE', null), // Target size in bytes
+            'max_quality' => env('MINIO_COMPRESSION_MAX_QUALITY', 95),
+            'min_quality' => env('MINIO_COMPRESSION_MIN_QUALITY', 60),
+            'preset' => env('MINIO_COMPRESSION_PRESET', 'high'), // low, medium, high, very_high, max
+        ],
+        
+        // Web optimization settings
+        'web' => [
+            'max_width' => env('MINIO_WEB_MAX_WIDTH', 1920),
+            'max_height' => env('MINIO_WEB_MAX_HEIGHT', 1080),
+            'quality' => env('MINIO_WEB_QUALITY', 85),
+        ],
     ],
 
     /*
     |--------------------------------------------------------------------------
-    | Image Compression Options
+    | Security Options
     |--------------------------------------------------------------------------
     |
-    | Dedicated image compression settings for optimal file size reduction.
+    | Security scanning settings for uploaded files.
     |
     */
-    'compression' => [
-        'quality' => env('MINIO_COMPRESSION_QUALITY', 80),
-        'format' => env('MINIO_COMPRESSION_FORMAT', 'jpg'),
-        'target_size' => env('MINIO_COMPRESSION_TARGET_SIZE', null), // Target size in bytes
-        'max_quality' => env('MINIO_COMPRESSION_MAX_QUALITY', 95),
-        'min_quality' => env('MINIO_COMPRESSION_MIN_QUALITY', 60),
-        'progressive' => env('MINIO_COMPRESSION_PROGRESSIVE', true),
-        'quality_preset' => env('MINIO_COMPRESSION_PRESET', 'high'), // low, medium, high, very_high, max
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Web Optimization Options
-    |--------------------------------------------------------------------------
-    |
-    | Settings for web-optimized image processing with automatic resizing
-    | and compression for web delivery.
-    |
-    */
-    'web_optimization' => [
-        'max_width' => env('MINIO_WEB_MAX_WIDTH', 1920),
-        'max_height' => env('MINIO_WEB_MAX_HEIGHT', 1080),
-        'quality' => env('MINIO_WEB_QUALITY', 85),
-        'format' => env('MINIO_WEB_FORMAT', 'jpg'),
-        'progressive' => env('MINIO_WEB_PROGRESSIVE', true),
-        'strip_metadata' => env('MINIO_WEB_STRIP_METADATA', true),
-        'auto_orient' => env('MINIO_WEB_AUTO_ORIENT', true),
+    'security' => [
+        'scan_images' => env('MINIO_SCAN_IMAGES', true),
+        'scan_documents' => env('MINIO_SCAN_DOCUMENTS', true),
+        'scan_videos' => env('MINIO_SCAN_VIDEOS', false),
+        'scan_archives' => env('MINIO_SCAN_ARCHIVES', true),
+        'max_file_size' => env('MINIO_MAX_SCAN_SIZE', 10485760), // 10MB
+        'strict_mode' => env('MINIO_SECURITY_STRICT_MODE', false),
+        'allow_svg' => env('MINIO_SECURITY_ALLOW_SVG', true),
+        'quarantine_suspicious' => env('MINIO_SECURITY_QUARANTINE', true),
     ],
 
     /*
@@ -105,34 +104,27 @@ return [
     | Thumbnail Options
     |--------------------------------------------------------------------------
     |
-    | Default settings for thumbnail generation.
+    | Settings for image and video thumbnail generation.
     |
     */
     'thumbnail' => [
-        'width' => env('MINIO_THUMBNAIL_WIDTH', 200),
-        'height' => env('MINIO_THUMBNAIL_HEIGHT', 200),
-        'method' => env('MINIO_THUMBNAIL_METHOD', 'fit'), // fit, crop, proportional, scale, resize
-        'quality' => env('MINIO_THUMBNAIL_QUALITY', 75),
-        'suffix' => env('MINIO_THUMBNAIL_SUFFIX', '-thumb'),
-        'path' => env('MINIO_THUMBNAIL_PATH', 'thumbnails'),
-        'optimize' => env('MINIO_THUMBNAIL_OPTIMIZE', true),
-        'format' => env('MINIO_THUMBNAIL_FORMAT', 'jpg'),
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Video Thumbnail Options
-    |--------------------------------------------------------------------------
-    |
-    | Default settings for video thumbnail generation.
-    |
-    */
-    'video_thumbnail' => [
-        'width' => env('MINIO_VIDEO_THUMBNAIL_WIDTH', 320),
-        'height' => env('MINIO_VIDEO_THUMBNAIL_HEIGHT', 240),
-        'time' => env('MINIO_VIDEO_THUMBNAIL_TIME', 5), // seconds or 00:00:05 format
-        'suffix' => env('MINIO_VIDEO_THUMBNAIL_SUFFIX', '-thumb'),
-        'path' => env('MINIO_VIDEO_THUMBNAIL_PATH', 'thumbnails'),
+        'image' => [
+            'width' => env('MINIO_THUMBNAIL_WIDTH', 200),
+            'height' => env('MINIO_THUMBNAIL_HEIGHT', 200),
+            'method' => env('MINIO_THUMBNAIL_METHOD', 'fit'), // fit, crop, proportional, scale, resize
+            'quality' => env('MINIO_THUMBNAIL_QUALITY', 75),
+            'optimize' => env('MINIO_THUMBNAIL_OPTIMIZE', true),
+            'format' => env('MINIO_THUMBNAIL_FORMAT', 'jpg'),
+        ],
+        'video' => [
+            'width' => env('MINIO_VIDEO_THUMBNAIL_WIDTH', 320),
+            'height' => env('MINIO_VIDEO_THUMBNAIL_HEIGHT', 240),
+            'time' => env('MINIO_VIDEO_THUMBNAIL_TIME', 5), // seconds or 00:00:05 format
+        ],
+        'common' => [
+            'suffix' => env('MINIO_THUMBNAIL_SUFFIX', '-thumb'),
+            'path' => env('MINIO_THUMBNAIL_PATH', 'thumbnails'),
+        ],
     ],
 
     /*
@@ -150,21 +142,7 @@ return [
         'ffmpeg.threads' => env('FFMPEG_THREADS', 12),
     ],
 
-    /*
-    |--------------------------------------------------------------------------
-    | Security Scanner Options
-    |--------------------------------------------------------------------------
-    |
-    | Configuration for the security scanner.
-    |
-    */
-    'security' => [
-        'scan_images' => env('MINIO_SCAN_IMAGES', false),
-        'scan_documents' => env('MINIO_SCAN_DOCUMENTS', true),
-        'scan_videos' => env('MINIO_SCAN_VIDEOS', false),
-        'scan_archives' => env('MINIO_SCAN_ARCHIVES', true),
-        'max_file_size' => env('MINIO_MAX_SCAN_SIZE', 10485760), // 10MB
-    ],
+
 
     /*
     |--------------------------------------------------------------------------
@@ -188,10 +166,11 @@ return [
     |--------------------------------------------------------------------------
     |
     | Settings for URL generation.
+    | Set default_expiration to null for public URLs (no expiration)
     |
     */
     'url' => [
-        'default_expiration' => env('MINIO_URL_DEFAULT_EXPIRATION', 3600), // 1 hour
+        'default_expiration' => env('MINIO_URL_DEFAULT_EXPIRATION', null), // null = public URLs
         'max_expiration' => env('MINIO_URL_MAX_EXPIRATION', 604800), // 7 days
     ],
 ]; 

@@ -223,6 +223,10 @@ class StorageService implements StorageServiceInterface
                 $expiration = $defaultExpiration;
             }
 
+            if ($expiration === null) {
+                return $this->getPublicUrl($path);
+            }
+
             $command = $this->s3Client->getCommand('GetObject', [
                 'Bucket' => $this->bucket,
                 'Key' => $path
@@ -367,7 +371,7 @@ class StorageService implements StorageServiceInterface
         }
 
         // Scan images if enabled
-        if ($this->imageProcessor->isImage($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_images', false) : false)) {
+        if ($this->imageProcessor->isImage($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_images', true) : true)) {
             $this->securityScanner->scan($content, $filename);
         }
 
@@ -379,6 +383,32 @@ class StorageService implements StorageServiceInterface
         // Scan other files
         if (!$this->imageProcessor->isImage($mimeType) && !$this->documentProcessor->isDocument($mimeType)) {
             $this->securityScanner->scan($content, $filename);
+        }
+    }
+
+    private function performSecurityScanOnProcessedImage(string $processedContent, string $finalPath, array $options): void
+    {
+        $scanProcessedImages = function_exists('config') ? config('minio-storage.security.scan_images', true) : true;
+        
+        if (!$scanProcessedImages) {
+            return;
+        }
+
+        $this->logger->info('Security scan on processed image started', ['path' => $finalPath]);
+
+        try {
+            // Scan processed image content
+            $this->securityScanner->scan($processedContent, basename($finalPath));
+            
+            $this->logger->info('Security scan on processed image completed', ['path' => $finalPath]);
+        } catch (\Exception $e) {
+            $this->logger->error('Security scan on processed image failed', [
+                'path' => $finalPath,
+                'error' => $e->getMessage()
+            ]);
+            
+            // Re-throw security exceptions
+            throw $e;
         }
     }
 
@@ -419,6 +449,12 @@ class StorageService implements StorageServiceInterface
             }
             
             $processedContent = $this->imageProcessor->process($content, $imageOptions);
+            
+            // Security scan processed image if enabled
+            if ($options['scan'] ?? false) {
+                $this->performSecurityScanOnProcessedImage($processedContent, $finalPath, $options);
+            }
+            
             $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $imageOptions));
             
         } else {

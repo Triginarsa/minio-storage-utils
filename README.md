@@ -4,7 +4,18 @@ A PHP library for secure file handling with MinIO object storage, designed speci
 
 ## Features
 
-- **🔒 Secure File Upload**: Advanced security scanning for malicious content, macros, and suspicious patterns
+- **🔒 Enhanced Security Scanning**: Advanced threat detection and prevention
+  - **PHP/Script Injection**: Detects embedded PHP, ASP, and JavaScript code
+  - **Polyglot File Detection**: Identifies files with multiple format signatures
+  - **EXIF Malicious Data**: Scans image metadata for suspicious content
+  - **Image End Marker Bypass**: Detects scripts hidden after image end markers
+  - **SVG Script Injection**: Comprehensive SVG security scanning
+  - **Obfuscated Code Detection**: Identifies encoded and obfuscated malicious code
+  - **File System Function Detection**: Scans for dangerous file manipulation functions
+  - **Network Function Detection**: Identifies suspicious network-related code
+  - **Processed Image Scanning**: Scans both original and processed images
+  - **Configurable Security Levels**: Basic, strict, and custom security modes
+  - **Automatic Threat Blocking**: Prevents malicious uploads with detailed logging
 - **🖼️ Advanced Image Compression**: Multiple compression algorithms with intelligent optimization
   - Quality-based compression (1-100 scale)
   - Target size compression (compress to specific file size)
@@ -98,28 +109,108 @@ MINIO_NAMING_STRATEGY=hash
 MINIO_IMAGE_QUALITY=85
 MINIO_IMAGE_MAX_WIDTH=2048
 MINIO_IMAGE_MAX_HEIGHT=2048
+MINIO_IMAGE_AUTO_ORIENT=true
+MINIO_IMAGE_STRIP_METADATA=true
 MINIO_IMAGE_OPTIMIZE=false
-MINIO_IMAGE_SMART_COMPRESSION=false
+MINIO_IMAGE_FORMAT=jpg
+MINIO_IMAGE_PROGRESSIVE=true
 
-# Compression settings
+# Image compression settings
 MINIO_COMPRESSION_QUALITY=80
-MINIO_COMPRESSION_FORMAT=jpg
-MINIO_COMPRESSION_PROGRESSIVE=true
-MINIO_COMPRESSION_PRESET=high
 MINIO_COMPRESSION_TARGET_SIZE=
 MINIO_COMPRESSION_MAX_QUALITY=95
 MINIO_COMPRESSION_MIN_QUALITY=60
+MINIO_COMPRESSION_PRESET=high
 
 # Web optimization settings
 MINIO_WEB_MAX_WIDTH=1920
 MINIO_WEB_MAX_HEIGHT=1080
 MINIO_WEB_QUALITY=85
-MINIO_WEB_FORMAT=jpg
-MINIO_WEB_PROGRESSIVE=true
 
 # Thumbnail settings
+MINIO_THUMBNAIL_WIDTH=200
+MINIO_THUMBNAIL_HEIGHT=200
+MINIO_THUMBNAIL_METHOD=fit
+MINIO_THUMBNAIL_QUALITY=75
 MINIO_THUMBNAIL_OPTIMIZE=true
 MINIO_THUMBNAIL_FORMAT=jpg
+MINIO_THUMBNAIL_SUFFIX=-thumb
+MINIO_THUMBNAIL_PATH=thumbnails
+
+# Video thumbnail settings
+MINIO_VIDEO_THUMBNAIL_WIDTH=320
+MINIO_VIDEO_THUMBNAIL_HEIGHT=240
+MINIO_VIDEO_THUMBNAIL_TIME=5
+
+# URL Configuration
+MINIO_URL_DEFAULT_EXPIRATION=    # null = public URLs (no expiration)
+MINIO_URL_MAX_EXPIRATION=604800
+
+# Video Processing Settings
+MINIO_VIDEO_COMPRESSION=medium
+MINIO_VIDEO_FORMAT=mp4
+MINIO_VIDEO_BITRATE=2000
+MINIO_VIDEO_AUDIO_BITRATE=128
+MINIO_VIDEO_MAX_WIDTH=1920
+MINIO_VIDEO_MAX_HEIGHT=1080
+MINIO_VIDEO_QUALITY=medium
+
+# FFmpeg Configuration
+FFMPEG_BINARIES=/usr/bin/ffmpeg
+FFPROBE_BINARIES=/usr/bin/ffprobe
+FFMPEG_TIMEOUT=3600
+FFMPEG_THREADS=12
+```
+
+## URL Configuration
+
+### Public URLs (No Expiration)
+
+By default, the library generates presigned URLs with expiration times for security. However, you can configure it to generate public URLs that don't expire:
+
+```env
+# Set to empty/null for public URLs
+MINIO_URL_DEFAULT_EXPIRATION=
+```
+
+**Important Notes:**
+- When `MINIO_URL_DEFAULT_EXPIRATION` is set to `null` or empty, the library automatically uses public URLs
+- Public URLs require your MinIO bucket to have public read access configured
+- Public URLs are direct links to files without presigned parameters
+
+### Configuring Public Bucket Access
+
+To use public URLs, you need to set a public read policy on your MinIO bucket:
+
+```bash
+# Using MinIO client (mc)
+mc policy set public your-alias/your-bucket-name
+
+# Or using MinIO console
+# Navigate to your bucket → Access Rules → Add Access Rule
+# Set prefix: * (all files)
+# Set access: Read Only
+```
+
+### URL Generation Examples
+
+```php
+// Simple URL generation - uses config default
+$url = MinioStorage::getUrl('path/to/file.jpg');
+// Result when MINIO_URL_DEFAULT_EXPIRATION is null: http://localhost:9000/my-bucket/path/to/file.jpg
+// Result when MINIO_URL_DEFAULT_EXPIRATION has value: http://localhost:9000/my-bucket/path/to/file.jpg?X-Amz-Algorithm=...
+
+// Upload results automatically include URLs based on config
+$result = MinioStorage::upload($file);
+echo $result['main']['url']; // Public or presigned URL based on config
+
+// Explicitly request public URL (always public regardless of config)
+$publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
+echo $publicUrl; // http://localhost:9000/my-bucket/path/to/file.jpg
+
+// Explicitly request presigned URL (always presigned regardless of config)
+$presignedUrl = MinioStorage::getUrl('path/to/file.jpg', 3600);
+echo $presignedUrl; // http://localhost:9000/my-bucket/path/to/file.jpg?X-Amz-Algorithm=...
 ```
 
 ## Quick Start
@@ -136,8 +227,22 @@ public function upload(Request $request)
 
     // Simple upload - path auto-generated
     $result = MinioStorage::upload($request->file('file'));
+    
+    // The result includes URL based on your configuration
+    // Public URL if MINIO_URL_DEFAULT_EXPIRATION is null
+    // Presigned URL if MINIO_URL_DEFAULT_EXPIRATION has a value
+    $fileUrl = $result['main']['url'];
   
     return response()->json(['success' => true, 'data' => $result]);
+}
+
+// Get URL for existing file
+public function getFileUrl($path)
+{
+    // Uses config default - public or presigned based on MINIO_URL_DEFAULT_EXPIRATION
+    $url = MinioStorage::getUrl($path);
+    
+    return response()->json(['url' => $url]);
 }
 ```
 
@@ -198,6 +303,144 @@ public function uploadDocument(Request $request)
 }
 ```
 
+## Security Features
+
+### Enhanced Security Scanning
+
+The library now includes comprehensive security scanning that detects multiple types of threats:
+
+#### Basic Security Usage
+
+```php
+// Secure image upload with enhanced scanning
+$result = MinioStorage::upload(
+    $request->file('image'),
+    'uploads/secure/',
+    [
+        'scan' => true,  // Enable security scanning (default: true)
+        'naming' => 'hash',
+        'image' => [
+            'strip_metadata' => true,  // Remove potentially malicious EXIF data
+            'quality' => 85,
+            'convert' => 'jpg'
+        ]
+    ]
+);
+```
+
+#### Security Configuration
+
+Add to your `.env` file:
+
+```env
+# Security settings
+MINIO_SCAN_IMAGES=true
+MINIO_SCAN_DOCUMENTS=true
+MINIO_SCAN_VIDEOS=false
+MINIO_SCAN_ARCHIVES=true
+MINIO_MAX_SCAN_SIZE=10485760
+MINIO_SECURITY_STRICT_MODE=false
+MINIO_SECURITY_ALLOW_SVG=true
+MINIO_SECURITY_QUARANTINE=true
+```
+
+#### Threat Detection Examples
+
+The security scanner detects various types of malicious content:
+
+```php
+// This will detect and block malicious uploads
+try {
+    $result = MinioStorage::upload($suspiciousFile, 'test/', ['scan' => true]);
+} catch (SecurityException $e) {
+    $threatInfo = $e->getContext();
+  
+    // Log the threat
+    Log::warning('Security threat detected', [
+        'file' => $threatInfo['filename'],
+        'threat' => $threatInfo['threat'] ?? 'unknown',
+        'pattern' => $threatInfo['pattern'] ?? null
+    ]);
+  
+    return response()->json([
+        'error' => 'Security threat detected',
+        'details' => $e->getMessage()
+    ], 403);
+}
+```
+
+#### Detected Threats Include:
+
+1. **PHP/Script Injection**
+
+   - PHP tags (`<?php`, `<?`, `<?=`)
+   - ASP tags (`<%`)
+   - JavaScript injection
+   - VBScript injection
+2. **Polyglot Files**
+
+   - ZIP files disguised as images
+   - PDF files with image extensions
+   - Executable files with image signatures
+3. **Image-Specific Threats**
+
+   - Scripts hidden after image end markers
+   - Malicious EXIF data
+   - SVG with embedded JavaScript
+   - HTML comments in images
+4. **Obfuscated Code**
+
+   - Base64 encoded payloads
+   - Hexadecimal encoded strings
+   - Character manipulation functions
+   - Function obfuscation
+5. **File System Functions**
+
+   - File manipulation functions
+   - Directory traversal attempts
+   - Permission modification attempts
+6. **Network Functions**
+
+   - Remote file inclusion
+   - Curl/socket operations
+   - Network communication attempts
+
+#### Custom Security Patterns
+
+You can add custom security patterns:
+
+```php
+// In a service provider or during application boot
+app(SecurityScanner::class)->addPattern('/your-custom-pattern/i');
+```
+
+#### Security Scanning Levels
+
+Configure different security levels in your config:
+
+```php
+// config/minio-storage.php
+'security' => [
+    'scan_images' => true,
+    'scan_documents' => true,
+    'strict_mode' => false,        // Enable for maximum security
+    'allow_svg' => false,          // SVG files can contain scripts
+    'quarantine_suspicious' => false, // Move suspicious files to quarantine
+],
+```
+
+#### Testing Security
+
+Use the provided security test controller:
+
+```php
+// Test various security scenarios
+Route::post('/security/test', [SecurityTestController::class, 'testImageSecurity']);
+Route::post('/security/polyglot', [SecurityTestController::class, 'testPolyglotDetection']);
+Route::post('/security/exif', [SecurityTestController::class, 'testExifSecurity']);
+Route::get('/security/report', [SecurityTestController::class, 'getSecurityReport']);
+```
+
 ## Advanced Usage
 
 ### File Management Operations
@@ -208,8 +451,14 @@ if (MinioStorage::fileExists('path/to/file.jpg')) {
     // Get detailed metadata
     $metadata = MinioStorage::getMetadata('path/to/file.jpg');
   
-    // Generate presigned URL (expires in 1 hour)
-    $url = MinioStorage::getUrl('path/to/file.jpg', 3600);
+    // Generate URL (public or presigned based on config)
+    $url = MinioStorage::getUrl('path/to/file.jpg');
+  
+    // Or explicitly request presigned URL (expires in 1 hour)
+    $presignedUrl = MinioStorage::getUrl('path/to/file.jpg', 3600);
+  
+    // Or explicitly request public URL
+    $publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
   
     // Delete file
     $deleted = MinioStorage::delete('path/to/file.jpg');
@@ -241,11 +490,11 @@ $result = MinioStorage::upload($file, null, ['naming' => new HashNamer()]);
 
 For a file originally named `"My Vacation Photo.jpg"`:
 
-| Strategy | Generated Filename | Description |
-|----------|-------------------|-------------|
-| `'hash'` | `a1b2c3d4e5f6...123456789.jpg` | SHA256 hash of file content (64 chars) |
-| `'slug'` | `my-vacation-photo-1704067200.jpg` | URL-friendly slug + timestamp |
-| `'original'` | `My Vacation Photo.jpg` | Original filename preserved |
+| Strategy       | Generated Filename                   | Description                            |
+| -------------- | ------------------------------------ | -------------------------------------- |
+| `'hash'`     | `a1b2c3d4e5f6...123456789.jpg`     | SHA256 hash of file content (64 chars) |
+| `'slug'`     | `my-vacation-photo-1704067200.jpg` | URL-friendly slug + timestamp          |
+| `'original'` | `My Vacation Photo.jpg`            | Original filename preserved            |
 
 #### Benefits of Each Strategy
 
@@ -284,6 +533,7 @@ The resize option supports multiple methods for different use cases:
 ```
 
 **Method Comparison:**
+
 - **fit/contain**: Best for profile pictures, maintains full image visibility
 - **crop/cover**: Best for thumbnails, fills entire area without distortion
 - **fill**: Same as crop, alternative naming
@@ -327,6 +577,7 @@ $result = MinioStorage::upload($image, null, [
 #### Quality Settings Priority
 
 The system respects quality settings in this order:
+
 1. **User-defined quality** (in `'image'` options) - highest priority, never overridden
 2. Quality preset (e.g., 'low', 'medium', 'high')
 3. Smart compression calculations (only if no user quality set)
@@ -363,9 +614,10 @@ $result = MinioStorage::upload($image, null, [
 ```
 
 **Common Issues:**
+
 - Quality set in wrong location (should be in `'image'` array)
 - Config defaults overriding (now fixed)
-- Smart compression overriding (now fixed)  
+- Smart compression overriding (now fixed)
 - PNG format ignoring quality (PNG uses different compression)
 
 #### Advanced Image Compression
@@ -525,7 +777,7 @@ public function processVideo(Request $request)
                 ]
             ]
         );
-        
+    
         return response()->json(['success' => true, 'data' => $result]);
     } catch (\Exception $e) {
         if (strpos($e->getMessage(), 'FFmpeg') !== false) {
@@ -701,7 +953,7 @@ Generate a presigned URL for file access.
 - `image` (array): Image processing configuration
   - `resize` (array): Width/height/method for resizing
     - `width` (int): Target width in pixels
-    - `height` (int): Target height in pixels  
+    - `height` (int): Target height in pixels
     - `method` (string): Resize method - 'fit', 'crop', 'fill', 'stretch', 'proportional', 'scale'
   - `convert` (string): Target format ('jpg', 'png', 'webp')
   - `quality` (int): Compression quality (1-100)
@@ -752,6 +1004,7 @@ Generate a presigned URL for file access.
 #### Video Options (Optional - Requires FFmpeg)
 
 - `video` (array): Video processing configuration
+
   - `format` (string): Output format ('mp4', 'webm')
   - `compression` (string): Compression preset ('ultrafast', 'fast', 'medium', 'slow', 'veryslow')
   - `resize` (array): Video resizing configuration
@@ -768,8 +1021,8 @@ Generate a presigned URL for file access.
   - `video_bitrate` (string): Video bitrate ('2000k')
   - `audio_bitrate` (string): Audio bitrate ('128k')
   - `additional_params` (array): Custom FFmpeg parameters
-
 - `video_thumbnail` (array): Video thumbnail generation configuration
+
   - `time` (int|string): Frame extraction time (seconds or '00:00:05')
   - `width/height` (int): Thumbnail dimensions
   - `suffix` (string): Filename suffix
@@ -864,18 +1117,17 @@ The library provides comprehensive logging for monitoring and debugging:
 ```env
 # High-quality compression for professional photography
 MINIO_COMPRESSION_QUALITY=90
-MINIO_COMPRESSION_FORMAT=jpg
-MINIO_COMPRESSION_PROGRESSIVE=true
+MINIO_IMAGE_FORMAT=jpg
+MINIO_IMAGE_PROGRESSIVE=true
 MINIO_WEB_MAX_WIDTH=2560
 MINIO_WEB_QUALITY=90
 
 # Optimized for web performance
 MINIO_COMPRESSION_QUALITY=75
-MINIO_COMPRESSION_FORMAT=webp
+MINIO_IMAGE_FORMAT=webp
 MINIO_WEB_MAX_WIDTH=1920
 MINIO_WEB_QUALITY=80
 MINIO_IMAGE_OPTIMIZE=true
-MINIO_IMAGE_SMART_COMPRESSION=true
 
 # Maximum compression for storage efficiency
 MINIO_COMPRESSION_PRESET=medium
@@ -889,24 +1141,41 @@ MINIO_THUMBNAIL_OPTIMIZE=true
 ```php
 // config/minio-storage.php
 return [
-    'compression' => [
-        'quality' => env('MINIO_COMPRESSION_QUALITY', 80),
-        'format' => env('MINIO_COMPRESSION_FORMAT', 'jpg'),
-        'progressive' => env('MINIO_COMPRESSION_PROGRESSIVE', true),
-        'quality_preset' => env('MINIO_COMPRESSION_PRESET', 'high'),
-    ],
-  
-    'web_optimization' => [
-        'max_width' => env('MINIO_WEB_MAX_WIDTH', 1920),
-        'max_height' => env('MINIO_WEB_MAX_HEIGHT', 1080),
-        'quality' => env('MINIO_WEB_QUALITY', 85),
-        'format' => env('MINIO_WEB_FORMAT', 'jpg'),
+    'image' => [
+        'quality' => env('MINIO_IMAGE_QUALITY', 85),
+        'format' => env('MINIO_IMAGE_FORMAT', 'jpg'),
+        'progressive' => env('MINIO_IMAGE_PROGRESSIVE', true),
+        'auto_orient' => env('MINIO_IMAGE_AUTO_ORIENT', true),
+        'strip_metadata' => env('MINIO_IMAGE_STRIP_METADATA', true),
+    
+        'compression' => [
+            'quality' => env('MINIO_COMPRESSION_QUALITY', 80),
+            'preset' => env('MINIO_COMPRESSION_PRESET', 'high'),
+            'target_size' => env('MINIO_COMPRESSION_TARGET_SIZE', null),
+        ],
+    
+        'web' => [
+            'max_width' => env('MINIO_WEB_MAX_WIDTH', 1920),
+            'max_height' => env('MINIO_WEB_MAX_HEIGHT', 1080),
+            'quality' => env('MINIO_WEB_QUALITY', 85),
+        ],
     ],
   
     'thumbnail' => [
-        'optimize' => env('MINIO_THUMBNAIL_OPTIMIZE', true),
-        'format' => env('MINIO_THUMBNAIL_FORMAT', 'jpg'),
-        'quality' => env('MINIO_THUMBNAIL_QUALITY', 75),
+        'image' => [
+            'optimize' => env('MINIO_THUMBNAIL_OPTIMIZE', true),
+            'format' => env('MINIO_THUMBNAIL_FORMAT', 'jpg'),
+            'quality' => env('MINIO_THUMBNAIL_QUALITY', 75),
+        ],
+        'video' => [
+            'width' => env('MINIO_VIDEO_THUMBNAIL_WIDTH', 320),
+            'height' => env('MINIO_VIDEO_THUMBNAIL_HEIGHT', 240),
+            'time' => env('MINIO_VIDEO_THUMBNAIL_TIME', 5),
+        ],
+        'common' => [
+            'suffix' => env('MINIO_THUMBNAIL_SUFFIX', '-thumb'),
+            'path' => env('MINIO_THUMBNAIL_PATH', 'thumbnails'),
+        ],
     ],
 ];
 ```

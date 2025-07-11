@@ -198,4 +198,101 @@ class SecurityScannerTest extends TestCase
         $result = $this->scanner->scan($content, $filename);
         $this->assertTrue($result);
     }
+
+    public function testPolyglotDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Polyglot file detected');
+        
+        $polyglotContent = "\x50\x4B\x03\x04malicious content with ZIP signature";
+        $this->scanner->scan($polyglotContent, 'polyglot.jpg');
+    }
+
+    public function testImageEndMarkerBypass(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Malicious content detected after JPEG end marker');
+        
+        $maliciousJpeg = "fake_jpeg_content\xFF\xD9<?php echo 'hidden script'; ?>";
+        $this->scanner->scan($maliciousJpeg, 'malicious.jpg');
+    }
+
+    public function testSvgScriptDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $maliciousSvg = '<svg onload="alert(\'xss\')" xmlns="http://www.w3.org/2000/svg"></svg>';
+        $this->scanner->scan($maliciousSvg, 'malicious.svg');
+    }
+
+    public function testObfuscatedCodeDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $obfuscatedContent = 'eval(base64_decode("malicious code"));';
+        $this->scanner->scan($obfuscatedContent, 'obfuscated.txt');
+    }
+
+    public function testNetworkFunctionDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $networkContent = 'curl_exec($ch);';
+        $this->scanner->scan($networkContent, 'network.txt');
+    }
+
+    public function testFileSystemFunctionDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $filesystemContent = 'unlink("/etc/passwd");';
+        $this->scanner->scan($filesystemContent, 'filesystem.txt');
+    }
+
+    public function testImageSpecificThreats(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Malicious content detected after PNG end marker');
+        
+        $maliciousPng = "fake_png_content\x00\x00\x00\x00IEND\xAE\x42\x60\x82<script>alert('xss')</script>";
+        $this->scanner->scan($maliciousPng, 'malicious.png');
+    }
+
+    public function testHexObfuscationDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $hexObfuscated = 'chr(112).chr(104).chr(112)';
+        $this->scanner->scan($hexObfuscated, 'hex.txt');
+    }
+
+    public function testAspTagDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $aspContent = '<% response.write("ASP code") %>';
+        $this->scanner->scan($aspContent, 'asp.txt');
+    }
+
+    public function testDataUrlDetection(): void
+    {
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected');
+        
+        $dataUrl = 'data:text/html,<script>alert("xss")</script>';
+        $this->scanner->scan($dataUrl, 'data.txt');
+    }
+
+    public function testSafeContentPasses(): void
+    {
+        $safeContent = "This is safe text content without any malicious patterns.";
+        $result = $this->scanner->scan($safeContent, 'safe.txt');
+        $this->assertTrue($result);
+    }
 } 
