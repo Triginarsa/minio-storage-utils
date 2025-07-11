@@ -255,12 +255,51 @@ For a file originally named `"My Vacation Photo.jpg"`:
 
 ### Image Processing & Advanced Compression
 
+#### Resize Methods
+
+The resize option supports multiple methods for different use cases:
+
+```php
+// Fit - Maintains aspect ratio, fits within bounds (letterbox/pillarbox)
+'resize' => ['width' => 800, 'height' => 600, 'method' => 'fit']
+
+// Crop - Fills entire area, crops excess (no distortion)
+'resize' => ['width' => 800, 'height' => 600, 'method' => 'crop']
+
+// Fill - Same as crop, fills and crops from center
+'resize' => ['width' => 800, 'height' => 600, 'method' => 'fill']
+
+// Stretch - Forces exact dimensions (may distort aspect ratio)
+'resize' => ['width' => 800, 'height' => 600, 'method' => 'stretch']
+
+// Proportional - Scales down proportionally to fit (default)
+'resize' => ['width' => 800, 'height' => 600, 'method' => 'proportional']
+
+// Scale - Same as proportional
+'resize' => ['width' => 800, 'height' => 600, 'method' => 'scale']
+
+// Width or height only - always proportional
+'resize' => ['width' => 800] // Height auto-calculated
+'resize' => ['height' => 600] // Width auto-calculated
+```
+
+**Method Comparison:**
+- **fit/contain**: Best for profile pictures, maintains full image visibility
+- **crop/cover**: Best for thumbnails, fills entire area without distortion
+- **fill**: Same as crop, alternative naming
+- **stretch/force**: Use when exact dimensions are critical (may distort)
+- **proportional/scale**: Default behavior, safe scaling that never distorts
+
 #### Basic Image Processing
 
 ```php
 $result = MinioStorage::upload($image, null, [
     'image' => [
-        'resize' => ['width' => 800, 'height' => 600],
+        'resize' => [
+            'width' => 800, 
+            'height' => 600,
+            'method' => 'fit' // fit, crop, fill, stretch, proportional, scale
+        ],
         'convert' => 'jpg',
         'quality' => 85,
         'auto_orient' => true,
@@ -616,7 +655,10 @@ Generate a presigned URL for file access.
 #### Image Options
 
 - `image` (array): Image processing configuration
-  - `resize` (array): Width/height for resizing
+  - `resize` (array): Width/height/method for resizing
+    - `width` (int): Target width in pixels
+    - `height` (int): Target height in pixels  
+    - `method` (string): Resize method - 'fit', 'crop', 'fill', 'stretch', 'proportional', 'scale'
   - `convert` (string): Target format ('jpg', 'png', 'webp')
   - `quality` (int): Compression quality (1-100)
   - `auto_orient` (bool): Auto-rotate based on EXIF

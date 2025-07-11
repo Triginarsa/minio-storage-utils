@@ -53,7 +53,11 @@ try {
             'scan' => true,
             'naming' => new HashNamer(),
             'image' => [
-                'resize' => ['width' => 800, 'height' => 600],
+                'resize' => [
+                    'width' => 800, 
+                    'height' => 600,
+                    'method' => 'crop'
+                ],
                 'convert' => 'jpg',
                 'quality' => 85,
                 'watermark' => [

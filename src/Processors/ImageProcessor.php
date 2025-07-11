@@ -87,18 +87,71 @@ class ImageProcessor
         if (isset($options['resize'])) {
             $width = $options['resize']['width'] ?? null;
             $height = $options['resize']['height'] ?? null;
+            $method = $options['resize']['method'] ?? 'proportional';
             
             if ($width && $height) {
-                // Both dimensions specified - resize with aspect ratio constraint
-                $image->resize($width, $height, function ($constraint) {
-                    $constraint->aspectRatio();
-                    $constraint->upsize();
-                });
-                
-                $this->logger->info('Image resized to max dimensions', [
-                    'max_width' => $width,
-                    'max_height' => $height
-                ]);
+                // Both dimensions specified - apply resize method
+                switch ($method) {
+                    case 'fit':
+                    case 'contain':
+                        // Fit within bounds maintaining aspect ratio (letterbox/pillarbox)
+                        $image->contain($width, $height);
+                        $this->logger->info('Image fitted to dimensions', [
+                            'width' => $width,
+                            'height' => $height,
+                            'method' => 'fit',
+                            'final_dimensions' => $image->width() . 'x' . $image->height()
+                        ]);
+                        break;
+                    
+                    case 'crop':
+                    case 'cover':
+                        // Crop to exact dimensions (fills entire area)
+                        $image->cover($width, $height);
+                        $this->logger->info('Image cropped to dimensions', [
+                            'width' => $width,
+                            'height' => $height,
+                            'method' => 'crop',
+                            'final_dimensions' => $image->width() . 'x' . $image->height()
+                        ]);
+                        break;
+                    
+                    case 'fill':
+                        // Fill and crop from center
+                        $image->cover($width, $height);
+                        $this->logger->info('Image filled to dimensions', [
+                            'width' => $width,
+                            'height' => $height,
+                            'method' => 'fill',
+                            'final_dimensions' => $image->width() . 'x' . $image->height()
+                        ]);
+                        break;
+                    
+                    case 'stretch':
+                    case 'force':
+                        // Force resize (may distort aspect ratio)
+                        $image->resize($width, $height);
+                        $this->logger->info('Image stretched to dimensions', [
+                            'width' => $width,
+                            'height' => $height,
+                            'method' => 'stretch',
+                            'final_dimensions' => $image->width() . 'x' . $image->height()
+                        ]);
+                        break;
+                    
+                    case 'scale':
+                    case 'proportional':
+                    default:
+                        // Scale proportionally to fit within bounds (default behavior)
+                        $image->scaleDown($width, $height);
+                        $this->logger->info('Image scaled proportionally', [
+                            'max_width' => $width,
+                            'max_height' => $height,
+                            'method' => 'proportional',
+                            'final_dimensions' => $image->width() . 'x' . $image->height()
+                        ]);
+                        break;
+                }
             } elseif ($width && !$height) {
                 // Only width specified - scale down proportionally to max width
                 $image->scaleDown($width);

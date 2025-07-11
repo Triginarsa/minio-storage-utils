@@ -262,6 +262,78 @@ class ImageProcessorTest extends TestCase
         $this->assertIsString($result);
     }
 
+    public function testResizeWithFitMethod()
+    {
+        $options = [
+            'resize' => [
+                'width' => 400,
+                'height' => 300,
+                'method' => 'fit',
+            ],
+            'quality' => 85,
+        ];
+
+        $result = $this->processor->process($this->testImageContent, $options);
+        
+        $this->assertNotEmpty($result);
+        $this->assertIsString($result);
+    }
+
+    public function testResizeWithCropMethod()
+    {
+        $options = [
+            'resize' => [
+                'width' => 400,
+                'height' => 300,
+                'method' => 'crop',
+            ],
+            'quality' => 85,
+        ];
+
+        $result = $this->processor->process($this->testImageContent, $options);
+        
+        $this->assertNotEmpty($result);
+        $this->assertIsString($result);
+    }
+
+    public function testResizeWithStretchMethod()
+    {
+        $options = [
+            'resize' => [
+                'width' => 400,
+                'height' => 300,
+                'method' => 'stretch',
+            ],
+            'quality' => 85,
+        ];
+
+        $result = $this->processor->process($this->testImageContent, $options);
+        
+        $this->assertNotEmpty($result);
+        $this->assertIsString($result);
+    }
+
+    public function testResizeWithAllMethods()
+    {
+        $methods = ['fit', 'crop', 'fill', 'stretch', 'proportional', 'scale'];
+        
+        foreach ($methods as $method) {
+            $options = [
+                'resize' => [
+                    'width' => 400,
+                    'height' => 300,
+                    'method' => $method,
+                ],
+                'quality' => 85,
+            ];
+
+            $result = $this->processor->process($this->testImageContent, $options);
+            
+            $this->assertNotEmpty($result, "Failed for method: {$method}");
+            $this->assertIsString($result, "Failed for method: {$method}");
+        }
+    }
+
     public function testMaxDimensionsConstraint()
     {
         $options = [

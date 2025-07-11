@@ -44,7 +44,11 @@ class FileUploadController extends Controller
                     'scan' => true,
                     'naming' => 'hash',
                     'image' => [
-                        'resize' => ['width' => 1024],
+                        'resize' => [
+                            'width' => 1024,
+                            'height' => 768,
+                            'method' => 'fit'
+                        ],
                         'convert' => 'jpg',
                         'quality' => 85,
                     ],
