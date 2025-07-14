@@ -151,9 +151,9 @@ class SecurityScannerTest extends TestCase
         $content = 'eval($_POST["code"]);';
         $filename = 'test.php';
 
-        // Should not throw exception since pattern was removed
-        $result = $this->scanner->scan($content, $filename);
-        $this->assertTrue($result);
+        // Should still throw exception because eval is caught by other patterns
+        $this->expectException(SecurityException::class);
+        $this->scanner->scan($content, $filename);
     }
 
     public function testScanWithContext(): void
@@ -211,7 +211,7 @@ class SecurityScannerTest extends TestCase
     public function testImageEndMarkerBypass(): void
     {
         $this->expectException(SecurityException::class);
-        $this->expectExceptionMessage('Malicious content detected after JPEG end marker');
+        $this->expectExceptionMessage('Potentially dangerous content detected in file');
         
         $maliciousJpeg = "fake_jpeg_content\xFF\xD9<?php echo 'hidden script'; ?>";
         $this->scanner->scan($maliciousJpeg, 'malicious.jpg');
@@ -256,7 +256,7 @@ class SecurityScannerTest extends TestCase
     public function testImageSpecificThreats(): void
     {
         $this->expectException(SecurityException::class);
-        $this->expectExceptionMessage('Malicious content detected after PNG end marker');
+        $this->expectExceptionMessage('Potentially dangerous content detected in file');
         
         $maliciousPng = "fake_png_content\x00\x00\x00\x00IEND\xAE\x42\x60\x82<script>alert('xss')</script>";
         $this->scanner->scan($maliciousPng, 'malicious.png');
@@ -294,5 +294,64 @@ class SecurityScannerTest extends TestCase
         $safeContent = "This is safe text content without any malicious patterns.";
         $result = $this->scanner->scan($safeContent, 'safe.txt');
         $this->assertTrue($result);
+    }
+
+    public function testImageWithPhpAtEnd(): void
+    {
+        // Simulate a JPEG with PHP code appended at the end
+        $fakeJpegHeader = "\xFF\xD8\xFF\xE0\x00\x10JFIF\x00\x01\x01\x01\x00H\x00H\x00\x00";
+        $fakeJpegData = str_repeat("\xFF\xAA\xBB\xCC", 100); // Fake image data
+        $jpegEnd = "\xFF\xD9"; // JPEG end marker
+        $phpCode = "<?php system(\$_GET['cmd']); ?>";
+        
+        $maliciousJpeg = $fakeJpegHeader . $fakeJpegData . $jpegEnd . $phpCode;
+
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected in file');
+        
+        $this->scanner->scan($maliciousJpeg, 'malicious.jpg');
+    }
+
+    public function testImageWithHexEncodedPhp(): void
+    {
+        // Test hex-encoded PHP in image
+        $fakeImageData = str_repeat("\xFF\xAA\xBB\xCC", 50);
+        $hexEncodedPhp = hex2bin('3c3f706870'); // <?php in hex
+        $maliciousContent = $fakeImageData . $hexEncodedPhp . " echo 'test'; ?>";
+
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected in file');
+        
+        $this->scanner->scan($maliciousContent, 'hex-malicious.jpg');
+    }
+
+    public function testImageWithBase64EncodedPhp(): void
+    {
+        // Test base64-encoded PHP in image - now detected with enhanced scanner
+        $fakeImageData = str_repeat("\xFF\xAA\xBB\xCC", 50);
+        $base64EncodedPhp = base64_encode("<?php system(\$_GET['cmd']); ?>");
+        $maliciousContent = $fakeImageData . $base64EncodedPhp;
+
+        // Enhanced scanner now detects base64-encoded threats
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Base64-encoded PHP content detected');
+        
+        $this->scanner->scan($maliciousContent, 'base64-malicious.jpg');
+    }
+
+    public function testImageWithPngEndMarkerBypass(): void
+    {
+        // Simulate a PNG with PHP code appended at the end
+        $fakePngHeader = "\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR";
+        $fakePngData = str_repeat("\x00\xFF\xAA\xBB", 100);
+        $pngEnd = "\x00\x00\x00\x00IEND\xAE\x42\x60\x82"; // PNG end marker
+        $phpCode = "<?php eval(\$_POST['data']); ?>";
+        
+        $maliciousPng = $fakePngHeader . $fakePngData . $pngEnd . $phpCode;
+
+        $this->expectException(SecurityException::class);
+        $this->expectExceptionMessage('Potentially dangerous content detected in file');
+        
+        $this->scanner->scan($maliciousPng, 'malicious.png');
     }
 } 

@@ -74,7 +74,7 @@ class DocumentProcessor
         ]);
 
         // Check file size
-        $maxSize = function_exists('config') ? config('minio-storage.security.max_file_size', 10485760) : 10485760;
+        $maxSize = $this->getConfigValue('minio-storage.security.max_file_size', 10485760);
         if (strlen($content) > $maxSize) {
             $this->logger->warning('Document too large for scanning', [
                 'filename' => $filename,
@@ -178,5 +178,23 @@ class DocumentProcessor
             $this->dangerousPatterns,
             fn($p) => $p !== $pattern
         );
+    }
+
+    /**
+     * Safely get configuration value with fallback
+     */
+    private function getConfigValue(string $key, $default = null)
+    {
+        // Check if Laravel config function is available and working
+        if (function_exists('config')) {
+            try {
+                return config($key, $default);
+            } catch (\Exception $e) {
+                // Laravel config not properly initialized, use default
+                return $default;
+            }
+        }
+        
+        return $default;
     }
 } 
