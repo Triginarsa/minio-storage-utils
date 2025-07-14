@@ -89,10 +89,10 @@ return [
     | Security scanning settings for uploaded files.
     |
     | Environment Variables:
-    | MINIO_SCAN_IMAGES - Enable/disable image security scanning (default: true)
-    | MINIO_SCAN_DOCUMENTS - Enable/disable document security scanning (default: true)
+    | MINIO_SCAN_IMAGES - Enable/disable image security scanning (default: false)
+    | MINIO_SCAN_DOCUMENTS - Enable/disable document security scanning (default: false)
     | MINIO_SCAN_VIDEOS - Enable/disable video security scanning (default: false)
-    | MINIO_SCAN_ARCHIVES - Enable/disable archive security scanning (default: true)
+    | MINIO_SCAN_ARCHIVES - Enable/disable archive security scanning (default: false)
     | MINIO_MAX_SCAN_SIZE - Maximum file size for scanning in bytes (default: 10MB)
     | MINIO_SECURITY_STRICT_MODE - Enable strict security mode (default: false)
     | MINIO_SECURITY_ALLOW_SVG - Allow SVG uploads (default: true)
@@ -100,8 +100,8 @@ return [
     |
     */
     'security' => [
-        'scan_images' => env('MINIO_SCAN_IMAGES', true),
-        'scan_documents' => env('MINIO_SCAN_DOCUMENTS', true),
+        'scan_images' => env('MINIO_SCAN_IMAGES', false),
+        'scan_documents' => env('MINIO_SCAN_DOCUMENTS', false),
         'scan_videos' => env('MINIO_SCAN_VIDEOS', false),
         'scan_archives' => env('MINIO_SCAN_ARCHIVES', true),
         'max_file_size' => env('MINIO_MAX_SCAN_SIZE', 10485760), // 10MB

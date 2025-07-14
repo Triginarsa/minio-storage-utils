@@ -289,21 +289,30 @@ class SecurityScanner
      */
     private function performDeepScan(string $content, string $filename): void
     {
-        $hexContent = bin2hex($content);
+        // Skip hex pattern scanning for image files to avoid false positives
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'tiff', 'svg'];
+        $fileExt = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
         
-        $phpHexPatterns = [
-            '3c3f706870',           // <?php in hex
-            '3c3f20',               // <? (space) in hex
-            '3c3f3d',               // <?= in hex
-            '3c25',                 // <% in hex
-        ];
-        
-        foreach ($phpHexPatterns as $pattern) {
-            if (stripos($hexContent, $pattern) !== false) {
-                throw new SecurityException(
-                    "Hex-encoded PHP content detected in file: {$filename}",
-                    ['filename' => $filename, 'threat' => 'hex_encoded_php', 'pattern' => $pattern]
-                );
+        if (!in_array($fileExt, $imageExtensions)) {
+            $hexContent = bin2hex($content);
+            
+            // Use longer, more specific patterns to reduce false positives
+            $phpHexPatterns = [
+                '3c3f70687020',         // <?php  (with space) in hex - 6 bytes
+                '3c3f7068700a',         // <?php\n in hex - 6 bytes  
+                '3c3f7068700d',         // <?php\r in hex - 6 bytes
+                '3c3f706870283c3f706870',  // Repeated <?php pattern - very specific
+                '3c3f3d24',             // <?=$ in hex - 4 bytes, more specific
+                '3c2520',               // <%  (with space) in hex - 3 bytes
+            ];
+            
+            foreach ($phpHexPatterns as $pattern) {
+                if (stripos($hexContent, $pattern) !== false) {
+                    throw new SecurityException(
+                        "Hex-encoded PHP content detected in file: {$filename}",
+                        ['filename' => $filename, 'threat' => 'hex_encoded_php', 'pattern' => $pattern]
+                    );
+                }
             }
         }
         
@@ -706,11 +715,16 @@ class SecurityScanner
             $markerPos = strrpos($content, $marker);
             if ($markerPos !== false) {
                 $afterMarker = substr($content, $markerPos + strlen($marker));
-                if (strlen($afterMarker) > 2) { // More than 2 bytes after end marker is suspicious
+                if (strlen($afterMarker) > 10) { // Increased threshold - more than 10 bytes after end marker is suspicious
                     
                     // Skip detection if it's just repetitive binary data (not actually malicious)
                     if ($this->isRepetitiveBinaryData($afterMarker)) {
                         continue; // Skip this marker, it's likely legitimate image data
+                    }
+                    
+                    // Skip if the trailing data looks like legitimate image metadata
+                    if ($this->isLegitimateImageMetadata($afterMarker, $type)) {
+                        continue; // Skip this marker, it's likely legitimate metadata
                     }
                     
                     // First check with existing dangerous patterns
@@ -1044,6 +1058,66 @@ class SecurityScanner
         $maxCount = max($byteCounts);
         if ($maxCount / $length > 0.9) {
             return true; // Mostly the same byte repeated
+        }
+        
+        return false;
+    }
+
+    /**
+     * Check if trailing data looks like legitimate image metadata
+     */
+    private function isLegitimateImageMetadata(string $content, string $imageType): bool
+    {
+        $length = strlen($content);
+        
+        // For very small amounts of trailing data, it's likely just padding
+        if ($length <= 20) {
+            return true;
+        }
+        
+        // Check for mostly null bytes (padding)
+        $nullCount = substr_count($content, "\x00");
+        if ($nullCount / $length > 0.8) {
+            return true; // Mostly null bytes, likely padding
+        }
+        
+        // Check for common metadata patterns that are legitimate
+        $metadataPatterns = [
+            // ICC color profiles
+            '/^ADBE|^APPL|^MSFT|^scnr|^mntr|^prtr|^spac/',
+            // EXIF data markers
+            '/^Exif\x00\x00/',
+            '/^MM\x00\x2A|^II\x2A\x00/', // TIFF headers in EXIF
+            // XMP metadata
+            '/^<?xpacket/',
+            '/^<x:xmpmeta/',
+            // Photoshop metadata
+            '/^8BIM/',
+            // Generic XML metadata (common in PNG)
+            '/^<\?xml\s+version/',
+            '/^<metadata/',
+            // Comment chunks
+            '/^tEXt|^zTXt|^iTXt/', // PNG text chunks
+        ];
+        
+        foreach ($metadataPatterns as $pattern) {
+            if (preg_match($pattern, $content)) {
+                return true; // Looks like legitimate metadata
+            }
+        }
+        
+        // Check if content is mostly printable ASCII (likely text metadata)
+        $printableCount = 0;
+        for ($i = 0; $i < min($length, 100); $i++) { // Check first 100 bytes
+            $byte = ord($content[$i]);
+            if (($byte >= 32 && $byte <= 126) || $byte === 9 || $byte === 10 || $byte === 13) {
+                $printableCount++;
+            }
+        }
+        
+        $checkedLength = min($length, 100);
+        if ($printableCount / $checkedLength > 0.7) {
+            return true; // Mostly printable text, likely metadata
         }
         
         return false;
