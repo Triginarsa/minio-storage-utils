@@ -78,6 +78,7 @@ MINIO_VIDEO_MAX_SIZE=102400
 
 # URL Configuration
 MINIO_URL_DEFAULT_EXPIRATION=
+MINIO_URL_SIGNED_BY_DEFAULT=false
 MINIO_URL_FORCE_HTTPS=false
 ```
 
@@ -85,7 +86,9 @@ MINIO_URL_FORCE_HTTPS=false
 
 - Both `MINIO_STORAGE_DISK` and `MINIO_STORAGE_DISK_BACKUP` should be set to `minio` (matching your disk name in `config/filesystems.php`)
 - Leave `MINIO_URL_DEFAULT_EXPIRATION` empty for public URLs, or set seconds (e.g., `3600`) for private URLs
+- Set `MINIO_URL_SIGNED_BY_DEFAULT=true` for signed URLs by default, or `false` for public URLs (default)
 - Set `MINIO_VIDEO_PROCESSING=true` only if you have FFmpeg installed
+- Files with the same name will automatically get a number suffix (e.g., `image_1.jpg`, `image_2.jpg`)
 - For others env can check on .env.example
 
 ## Quick Start
@@ -139,14 +142,16 @@ public function uploadImage(Request $request)
 ### Get File URLs
 
 ```php
-// Get URL for existing file
+// Get URL for existing file (uses config defaults)
 $url = MinioStorage::getUrl('path/to/file.jpg');
 
-// Get public URL (no expiration)
-$publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
+// Get signed URL with custom expiration
+$signedUrl = MinioStorage::getUrl('path/to/file.jpg', 3600, true); // 1 hour, signed
 
-// Get private URL with expiration
-$privateUrl = MinioStorage::getUrl('path/to/file.jpg', 3600); // 1 hour
+// Get public URL (no expiration, no signature)
+$publicUrl = MinioStorage::getUrl('path/to/file.jpg', null, false);
+// or
+$publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
 ```
 
 ### Delete Files

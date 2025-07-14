@@ -13,6 +13,13 @@ use Monolog\Handler\StreamHandler;
 // ================================================
 // CONFIGURATION
 // ================================================
+//
+// DEFAULT URL BEHAVIOR:
+// - All uploaded files will have PUBLIC URLs by default (no signature required)
+// - To get signed URLs with expiration, use: getUrl($path, $expiration, true)
+// - To get public URLs explicitly, use: getUrl($path, null, false)
+// - Config setting MINIO_URL_SIGNED_BY_DEFAULT=false (default)
+//
 
 // 1. Configure Minio connection
 $config = new MinioConfig(
@@ -201,15 +208,15 @@ try {
     
     if ($storageService->fileExists($testPath)) {
         // Get public URL (no expiration)
-        $publicUrl = $storageService->getPublicUrl($testPath);
+        $publicUrl = $storageService->getUrl($testPath, null, false);
         echo "Public URL: $publicUrl\n";
         
         // Get signed URL with 1 hour expiration
-        $signedUrl = $storageService->getUrl($testPath, 3600);
+        $signedUrl = $storageService->getUrl($testPath, 3600, true);
         echo "Signed URL (1 hour): $signedUrl\n";
         
         // Get signed URL with 1 day expiration
-        $signedUrl24h = $storageService->getUrl($testPath, 86400);
+        $signedUrl24h = $storageService->getUrl($testPath, 86400, true);
         echo "Signed URL (24 hours): $signedUrl24h\n";
         
         // Get file metadata
@@ -412,10 +419,10 @@ try {
             
             // Get URLs
             try {
-                $publicUrl = $storageService->getPublicUrl($filePath);
+                $publicUrl = $storageService->getUrl($filePath, null, false);
                 echo "  🔗 Public URL: $publicUrl\n";
                 
-                $signedUrl = $storageService->getUrl($filePath, 3600);
+                $signedUrl = $storageService->getUrl($filePath, 3600, true);
                 echo "  🔐 Signed URL (1h): $signedUrl\n";
             } catch (\Exception $e) {
                 echo "  ✗ Failed to get URLs: " . $e->getMessage() . "\n";

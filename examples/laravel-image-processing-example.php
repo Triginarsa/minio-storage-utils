@@ -213,7 +213,7 @@ class ImageController extends Controller
 
         try {
             $path = $request->input('path');
-            $url = MinioStorage::getUrl($path);
+            $url = MinioStorage::getUrl($path); // Uses default (public URLs)
 
             return response()->json([
                 'success' => true,
@@ -413,7 +413,7 @@ class ImageController extends Controller
 
             $workflow = [
                 'main_image' => $mainResult,
-                'main_url' => MinioStorage::getUrl($mainResult['main']['path']),
+                'main_url' => MinioStorage::getUrl($mainResult['main']['path']), // Uses default (public URLs)
                 'temp_url' => MinioStorage::getTempUrl($mainResult['main']['path'], 3600),
             ];
 
@@ -437,7 +437,7 @@ class ImageController extends Controller
                 );
 
                 $workflow['thumbnail'] = $thumbnailResult;
-                $workflow['thumbnail_url'] = MinioStorage::getUrl($thumbnailResult['main']['path']);
+                $workflow['thumbnail_url'] = MinioStorage::getUrl($thumbnailResult['main']['path']); // Uses default (public URLs)
             }
 
             // Step 3: Schedule cleanup if requested

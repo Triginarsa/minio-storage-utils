@@ -1,6 +1,13 @@
 <?php
 
 // Laravel Controller Example for MinIO Storage Services
+// 
+// DEFAULT URL BEHAVIOR:
+// - All uploaded files will have PUBLIC URLs by default (no signature required)
+// - To get signed URLs with expiration, use: getUrl($path, $expiration, true)
+// - To get public URLs explicitly, use: getUrl($path, null, false)
+// - For config-based defaults, use: getUrl($path) // Uses MINIO_URL_SIGNED_BY_DEFAULT setting
+//
 use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
 use Illuminate\Http\Request;
 
@@ -383,8 +390,8 @@ class MinioStorageController extends Controller
 
             // Get URL (with or without expiration)
             $url = $expiration 
-                ? MinioStorage::getUrl($path, $expiration)
-                : MinioStorage::getPublicUrl($path);
+                ? MinioStorage::getUrl($path, $expiration, true)
+                : MinioStorage::getUrl($path, null, false);
             
             return response()->json([
                 'success' => true,
@@ -636,9 +643,9 @@ class MinioStorageController extends Controller
 
                     // Get URL based on type
                     if ($urlType === 'signed' && $expiration) {
-                        $url = MinioStorage::getUrl($path, $expiration);
+                        $url = MinioStorage::getUrl($path, $expiration, true);
                     } else {
-                        $url = MinioStorage::getPublicUrl($path);
+                        $url = MinioStorage::getUrl($path, null, false);
                     }
                     
                     $results[] = [
@@ -740,11 +747,11 @@ class MinioStorageController extends Controller
                     if ($includeUrls) {
                         try {
                             $urls = [
-                                'public' => MinioStorage::getPublicUrl($path)
+                                'public' => MinioStorage::getUrl($path, null, false)
                             ];
                             
                             if ($expiration) {
-                                $urls['signed'] = MinioStorage::getUrl($path, $expiration);
+                                $urls['signed'] = MinioStorage::getUrl($path, $expiration, true);
                                 $urls['signed_expiration'] = $expiration . ' seconds';
                             }
                             
@@ -854,9 +861,9 @@ class MinioStorageController extends Controller
                         if (in_array('urls', $operations)) {
                             try {
                                 $fileResult['urls'] = [
-                                    'public' => MinioStorage::getPublicUrl($path),
-                                    'signed_1h' => MinioStorage::getUrl($path, 3600),
-                                    'signed_24h' => MinioStorage::getUrl($path, 86400)
+                                    'public' => MinioStorage::getUrl($path, null, false),
+                                                'signed_1h' => MinioStorage::getUrl($path, 3600, true),
+            'signed_24h' => MinioStorage::getUrl($path, 86400, true)
                                 ];
                                 $summary['has_urls']++;
                             } catch (\Exception $e) {

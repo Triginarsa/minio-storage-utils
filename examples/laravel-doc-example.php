@@ -107,7 +107,7 @@ class DocumentController extends Controller
             $metadata = MinioStorage::getMetadata($path);
             
             // Generate presigned URL
-            $url = MinioStorage::getUrl($path, $expiration);
+            $url = MinioStorage::getUrl($path, $expiration, true);
 
             return response()->json([
                 'success' => true,

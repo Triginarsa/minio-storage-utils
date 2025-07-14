@@ -202,14 +202,17 @@ return [
     |
     | Settings for URL generation.
     | Set default_expiration to null for public URLs (no expiration)
+    | Set signed_by_default to false for public URLs by default
     |
     | Environment Variables:
     | MINIO_URL_DEFAULT_EXPIRATION - Default URL expiration in seconds (null = public URLs)
     | MINIO_URL_MAX_EXPIRATION - Maximum URL expiration in seconds (default: 604800 = 7 days)
+    | MINIO_URL_SIGNED_BY_DEFAULT - Whether to generate signed URLs by default (default: false)
     |
     */
     'url' => [
         'default_expiration' => env('MINIO_URL_DEFAULT_EXPIRATION', null),
         'max_expiration' => env('MINIO_URL_MAX_EXPIRATION', 604800),
+        'signed_by_default' => env('MINIO_URL_SIGNED_BY_DEFAULT', false),
     ],
 ]; 

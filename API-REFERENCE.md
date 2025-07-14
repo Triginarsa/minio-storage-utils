@@ -104,7 +104,7 @@ $metadata = MinioStorage::getMetadata('uploads/photo.jpg');
 
 ---
 
-### `getUrl($path, $expiration)`
+### `getUrl($path, $expiration, $signed)`
 
 Generate a URL for file access.
 
@@ -114,13 +114,21 @@ Generate a URL for file access.
 |-----------|------|----------|-------------|
 | `$path` | `string` | Yes | File path in storage |
 | `$expiration` | `int\|null` | No | URL expiration in seconds (uses config default if null) |
+| `$signed` | `bool\|null` | No | Whether to generate signed URL (uses config default if null) |
 
 #### Returns
 `string` - File URL (public or presigned based on configuration)
 
-#### Example
+#### Examples
 ```php
-$url = MinioStorage::getUrl('uploads/photo.jpg', 3600); // 1 hour expiration
+// Signed URL with 1 hour expiration
+$url = MinioStorage::getUrl('uploads/photo.jpg', 3600, true);
+
+// Public URL (no expiration)
+$url = MinioStorage::getUrl('uploads/photo.jpg', null, false);
+
+// Use config defaults
+$url = MinioStorage::getUrl('uploads/photo.jpg');
 ```
 
 ---
@@ -154,13 +162,41 @@ $publicUrl = MinioStorage::getPublicUrl('uploads/photo.jpg');
 | `scan` | `bool` | `true` | Enable security scanning for malicious content |
 | `naming` | `string\|NamerInterface` | `'hash'` | Naming strategy: `'hash'`, `'slug'`, `'original'`, or custom namer |
 | `preserve_structure` | `bool` | `false` | Maintain original directory structure |
+| `signed` | `bool\|null` | `false` | Override default URL signing behavior (default is public URLs) |
+| `url_expiration` | `int\|null` | `null` | Override default URL expiration (uses config if null) |
+| `url` | `array` | `[]` | URL configuration options |
 
-### Example
+### URL Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `signed` | `bool\|null` | `false` (public) | Whether to generate signed URLs |
+| `expiration` | `int\|null` | Config default | URL expiration in seconds |
+
+### Examples
 ```php
+// Basic upload options
 $options = [
     'scan' => true,
     'naming' => 'slug',
     'preserve_structure' => false
+];
+
+// Upload with custom URL behavior
+$options = [
+    'scan' => true,
+    'naming' => 'hash',
+    'signed' => true,  // Force signed URLs (default is public)
+    'url_expiration' => 7200  // 2 hours
+];
+
+// Upload with URL config object
+$options = [
+    'scan' => true,
+    'url' => [
+        'signed' => true,
+        'expiration' => 3600
+    ]
 ];
 ```
 

@@ -374,7 +374,7 @@ class VideoController extends Controller
                 ], 404);
             }
 
-            $url = MinioStorage::getUrl($path, $expiration);
+            $url = MinioStorage::getUrl($path, $expiration, true);
             $response = [
                 'success' => true,
                 'data' => [
