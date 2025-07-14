@@ -26,7 +26,7 @@ class StorageService implements StorageServiceInterface
     private ImageProcessor $imageProcessor;
     private SecurityScanner $securityScanner;
     private DocumentProcessor $documentProcessor;
-    private VideoProcessor $videoProcessor;
+    private ?VideoProcessor $videoProcessor;
     private S3Client $s3Client;
     private string $bucket;
 
@@ -52,7 +52,7 @@ class StorageService implements StorageServiceInterface
         $this->imageProcessor = $imageProcessor ?? new ImageProcessor($logger);
         $this->securityScanner = $securityScanner ?? new SecurityScanner($logger);
         $this->documentProcessor = $documentProcessor ?? new DocumentProcessor($logger);
-        $this->videoProcessor = $videoProcessor ?? new VideoProcessor($logger);
+        $this->videoProcessor = $videoProcessor;
     }
 
     public function upload($source, string $destinationPath = null, array $options = []): array
@@ -93,7 +93,7 @@ class StorageService implements StorageServiceInterface
             // Process based on file type
             if ($this->imageProcessor->isImage($mimeType)) {
                 $results = $this->processImage($content, $finalPath, $mimeType, $options);
-            } elseif ($this->videoProcessor->isVideo($mimeType)) {
+            } elseif ($this->videoProcessor && $this->videoProcessor->isVideo($mimeType)) {
                 $results = $this->processVideo($source, $finalPath, $mimeType, $options);
             } else {
                 // Upload original file for other types
@@ -173,7 +173,7 @@ class StorageService implements StorageServiceInterface
                 $content = $this->filesystem->read($path);
                 $imageInfo = $this->imageProcessor->getImageInfo($content);
                 $metadata = array_merge($metadata, $imageInfo);
-            } elseif ($this->videoProcessor->isVideo($metadata['mime_type'])) {
+            } elseif ($this->videoProcessor && $this->videoProcessor->isVideo($metadata['mime_type'])) {
                 // For video metadata, we'd need to download the file temporarily
                 // This is optional and can be expensive for large files
                 if ($this->videoProcessor->isFFmpegAvailable() && $metadata['size'] < 50 * 1024 * 1024) { // Only for files < 50MB
@@ -219,7 +219,7 @@ class StorageService implements StorageServiceInterface
         try {
             // If expiration is null, check config for default behavior
             if ($expiration === null) {
-                $defaultExpiration = config('minio-storage.url.default_expiration', 3600);
+                $defaultExpiration = function_exists('config') ? config('minio-storage.url.default_expiration', 3600) : 3600;
                 $expiration = $defaultExpiration;
             }
 
@@ -265,8 +265,8 @@ class StorageService implements StorageServiceInterface
         $this->logger->info('Generating public URL', ['path' => $path]);
 
         try {
-            $endpoint = rtrim(config("filesystems.disks.minio.endpoint"), '/');
-            $bucket = rtrim(config("filesystems.disks.minio.bucket"), '/');
+            $endpoint = rtrim(function_exists('config') ? config("filesystems.disks.minio.endpoint", $this->s3Client->getEndpoint()) : $this->s3Client->getEndpoint(), '/');
+            $bucket = rtrim(function_exists('config') ? config("filesystems.disks.minio.bucket", $this->bucket) : $this->bucket, '/');
             $cleanPath = ltrim($path, '/');
             $publicUrl = "{$endpoint}/{$bucket}/" . $cleanPath;
 
@@ -371,19 +371,53 @@ class StorageService implements StorageServiceInterface
             return;
         }
 
-        // Scan images if enabled
-        if ($this->imageProcessor->isImage($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_images', true) : true)) {
-            $this->securityScanner->scan($content, $filename);
-        }
+        $this->logger->info('Security scan started', [
+            'filename' => $filename,
+            'mime_type' => $mimeType,
+            'content_size' => strlen($content)
+        ]);
 
-        // Scan documents if enabled
-        if ($this->documentProcessor->isDocument($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_documents', true) : true)) {
-            $this->documentProcessor->scan($content, $filename, $mimeType);
-        }
+        try {
+            // Scan images if enabled
+            if ($this->imageProcessor->isImage($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_images', true) : true)) {
+                $this->securityScanner->scan($content, $filename);
+            }
 
-        // Scan other files
-        if (!$this->imageProcessor->isImage($mimeType) && !$this->documentProcessor->isDocument($mimeType)) {
-            $this->securityScanner->scan($content, $filename);
+            // Scan documents if enabled
+            if ($this->documentProcessor->isDocument($mimeType) && (function_exists('config') ? config('minio-storage.security.scan_documents', true) : true)) {
+                $this->documentProcessor->scan($content, $filename, $mimeType);
+            }
+
+            // Scan other files
+            if (!$this->imageProcessor->isImage($mimeType) && !$this->documentProcessor->isDocument($mimeType)) {
+                $this->securityScanner->scan($content, $filename);
+            }
+
+            $this->logger->info('Security scan completed successfully', [
+                'filename' => $filename,
+                'mime_type' => $mimeType
+            ]);
+        } catch (\Triginarsa\MinioStorageUtils\Exceptions\SecurityException $e) {
+            $this->logger->error('Security threat detected - upload blocked', [
+                'filename' => $filename,
+                'mime_type' => $mimeType,
+                'error' => $e->getMessage(),
+                'context' => $e->getContext()
+            ]);
+            
+            // Re-throw to block the upload
+            throw $e;
+        } catch (\Exception $e) {
+            $this->logger->error('Security scan failed', [
+                'filename' => $filename,
+                'mime_type' => $mimeType,
+                'error' => $e->getMessage()
+            ]);
+            
+            throw new \Triginarsa\MinioStorageUtils\Exceptions\SecurityException(
+                "Security scan failed for file: {$filename}",
+                ['filename' => $filename, 'original_error' => $e->getMessage()]
+            );
         }
     }
 
@@ -395,21 +429,36 @@ class StorageService implements StorageServiceInterface
             return;
         }
 
-        $this->logger->info('Security scan on processed image started', ['path' => $finalPath]);
+        $this->logger->info('Security scan on processed image started', [
+            'path' => $finalPath,
+            'content_size' => strlen($processedContent)
+        ]);
 
         try {
             // Scan processed image content
             $this->securityScanner->scan($processedContent, basename($finalPath));
             
             $this->logger->info('Security scan on processed image completed', ['path' => $finalPath]);
+        } catch (\Triginarsa\MinioStorageUtils\Exceptions\SecurityException $e) {
+            $this->logger->error('Security threat detected in processed image - upload blocked', [
+                'path' => $finalPath,
+                'error' => $e->getMessage(),
+                'context' => $e->getContext()
+            ]);
+            
+            // Re-throw security exceptions to block upload
+            throw $e;
         } catch (\Exception $e) {
             $this->logger->error('Security scan on processed image failed', [
                 'path' => $finalPath,
                 'error' => $e->getMessage()
             ]);
             
-            // Re-throw security exceptions
-            throw $e;
+            // Re-throw as security exception to block upload
+            throw new \Triginarsa\MinioStorageUtils\Exceptions\SecurityException(
+                "Security scan failed for processed image: " . basename($finalPath),
+                ['path' => $finalPath, 'original_error' => $e->getMessage()]
+            );
         }
     }
 
@@ -500,6 +549,13 @@ class StorageService implements StorageServiceInterface
     private function processVideo($source, string $finalPath, string $mimeType, array $options): array
     {
         $results = [];
+        
+        // If videoProcessor is null, just upload the original file
+        if (!$this->videoProcessor) {
+            $content = is_string($source) ? file_get_contents($source) : $source;
+            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType);
+            return $results;
+        }
         
         // Check if video processing is requested but FFmpeg is not available
         $requiresProcessing = isset($options['video']) || isset($options['video_thumbnail']);
