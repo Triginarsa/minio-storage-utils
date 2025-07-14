@@ -84,12 +84,12 @@ MINIO_URL_FORCE_HTTPS=false
 
 **Important Notes:**
 
-- Both `MINIO_STORAGE_DISK` and `MINIO_STORAGE_DISK_BACKUP` should be set to `minio` (matching your disk name in `config/filesystems.php`)
-- Leave `MINIO_URL_DEFAULT_EXPIRATION` empty for public URLs, or set seconds (e.g., `3600`) for private URLs
-- Set `MINIO_URL_SIGNED_BY_DEFAULT=true` for signed URLs by default, or `false` for public URLs (default)
-- Set `MINIO_VIDEO_PROCESSING=true` only if you have FFmpeg installed
-- Files with the same name will automatically get a number suffix (e.g., `image_1.jpg`, `image_2.jpg`)
-- For others env can check on .env.example
+- Both `MINIO_STORAGE_DISK` and `MINIO_STORAGE_DISK_BACKUP` should be set to `minio` (matching your disk name in `config/filesystems.php`).
+- By default, URLs are public (unsigned). To make signed URLs the default, set `MINIO_URL_SIGNED_BY_DEFAULT=true`.
+- You can set a default expiration for signed URLs with `MINIO_URL_DEFAULT_EXPIRATION=3600` (in seconds).
+- Set `MINIO_VIDEO_PROCESSING=true` only if you have FFmpeg installed.
+- Files with the same name will automatically get a number suffix (e.g., `image_1.jpg`, `image_2.jpg`).
+- For others env can check on .env.example.
 
 ## Quick Start
 
@@ -243,21 +243,38 @@ If you want to see the detailed API reference, check out this [API REFERENCE](AP
 - **slug**: `my-vacation-photo-1704067200.jpg` (SEO-friendly)
 - **original**: `My Vacation Photo.jpg` (keeps original name)
 
-## URL Types
+## URL Generation
 
-### Public URLs (No Expiration)
+The library generates two types of URLs, with **public (unsigned) URLs as the default**.
 
-Set `MINIO_URL_DEFAULT_EXPIRATION=` (empty) in `.env`
+### Public URLs (Default Behavior)
 
-- Direct access: `http://localhost:9000/bucket/file.jpg`
-- Requires public bucket policy
+Public URLs provide direct, unsigned access to files, suitable for content in publicly accessible buckets.
 
-### Private URLs (With Expiration)
+- **Configuration**: `MINIO_URL_SIGNED_BY_DEFAULT=false` (in `.env`)
+- **How to Generate**:
+  ```php
+  // The default `getUrl()` call now returns a public URL
+  $publicUrl = MinioStorage::getUrl('path/to/file.jpg');
 
-Set `MINIO_URL_DEFAULT_EXPIRATION=3600` in `.env`
+  // You can also be explicit
+  $publicUrl = MinioStorage::getUrl('path/to/file.jpg', null, false);
+  $publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
+  ```
+- **Use Case**: Public assets like images, stylesheets, or public documents. Requires your bucket to have a public access policy.
 
-- Secure access: `http://localhost:9000/bucket/file.jpg?X-Amz-Algorithm=...`
-- Expires after specified time
+### Signed URLs (For Private Content)
+
+Signed URLs are secure, temporary links to private files. They are ideal for sensitive or user-specific content that should not be publicly accessible.
+
+- **How to Generate**:
+  ```php
+  // Explicitly request a signed URL with a 1-hour expiration
+  $signedUrl = MinioStorage::getUrl('path/to/file.jpg', 3600, true);
+  ```
+- **Making Signed URLs the Default**:
+  - Set `MINIO_URL_SIGNED_BY_DEFAULT=true` in your `.env` file.
+  - You can also set a default expiration for all signed URLs with `MINIO_URL_DEFAULT_EXPIRATION=3600` (in seconds).
 
 ## Error Handling
 
