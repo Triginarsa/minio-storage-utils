@@ -507,6 +507,8 @@ $result = MinioStorage::upload($file, null, [
     'success' => true,
     'main' => [
         'path' => 'uploads/photo.jpg',
+        'filename' => 'photo.jpg',
+        'original_name' => 'my-vacation-photo.jpg',  // Original uploaded filename
         'url' => 'http://localhost:9000/bucket/uploads/photo.jpg',
         'size' => 1024,
         'mime_type' => 'image/jpeg',
@@ -515,6 +517,8 @@ $result = MinioStorage::upload($file, null, [
     ],
     'thumbnail' => [         // If thumbnail generated
         'path' => 'thumbnails/photo-thumb.jpg',
+        'filename' => 'photo-thumb.jpg',
+        'original_name' => 'my-vacation-photo.jpg',  // Original uploaded filename
         'url' => 'http://localhost:9000/bucket/thumbnails/photo-thumb.jpg',
         'size' => 256,
         'width' => 200,
@@ -522,6 +526,8 @@ $result = MinioStorage::upload($file, null, [
     ],
     'video_thumbnail' => [   // If video thumbnail generated
         'path' => 'thumbnails/video-thumb.jpg',
+        'filename' => 'video-thumb.jpg',
+        'original_name' => 'my-vacation-video.mp4',  // Original uploaded filename
         'url' => 'http://localhost:9000/bucket/thumbnails/video-thumb.jpg',
         'size' => 128,
         'width' => 320,
@@ -535,6 +541,7 @@ $result = MinioStorage::upload($file, null, [
 ```php
 [
     'path' => 'uploads/photo.jpg',
+    'filename' => 'photo.jpg',
     'size' => 1024,
     'mime_type' => 'image/jpeg',
     'last_modified' => '2024-01-01T12:00:00Z',

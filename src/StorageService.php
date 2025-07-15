@@ -95,13 +95,13 @@ class StorageService implements StorageServiceInterface
             
             // Process based on file type
             if ($this->imageProcessor->isImage($mimeType)) {
-                $results = $this->processImage($content, $finalPath, $mimeType, $options);
+                $results = $this->processImage($content, $finalPath, $mimeType, $options, $originalName);
             } elseif ($this->videoProcessor && $this->videoProcessor->isVideo($mimeType)) {
-                $results = $this->processVideo($source, $finalPath, $mimeType, $options);
-                    } else {
-            // Upload original file for other types
-            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options));
-        }
+                $results = $this->processVideo($source, $finalPath, $mimeType, $options, $originalName);
+            } else {
+                // Upload original file for other types
+                $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options), $originalName);
+            }
 
             $this->logger->info('Upload completed successfully', [
                 'destination' => $destinationPath,
@@ -127,6 +127,7 @@ class StorageService implements StorageServiceInterface
     public function delete(string $path): bool
     {
         $this->logger->info('Delete started', ['path' => $path]);
+        $path = ltrim($path, '/');
 
         try {
             $this->filesystem->delete($path);
@@ -143,6 +144,7 @@ class StorageService implements StorageServiceInterface
 
     public function fileExists(string $path): bool
     {
+        $path = ltrim($path, '/');
         try {
             return $this->filesystem->fileExists($path);
         } catch (FilesystemException $e) {
@@ -157,6 +159,7 @@ class StorageService implements StorageServiceInterface
     public function getMetadata(string $path): array
     {
         $this->logger->info('Getting metadata', ['path' => $path]);
+        $path = ltrim($path, '/');
 
         try {
             if (!$this->fileExists($path)) {
@@ -165,6 +168,7 @@ class StorageService implements StorageServiceInterface
 
             $metadata = [
                 'path' => $path,
+                'filename' => basename($path),
                 'size' => $this->filesystem->fileSize($path),
                 'mime_type' => $this->filesystem->mimeType($path),
                 'last_modified' => $this->filesystem->lastModified($path),
@@ -473,7 +477,7 @@ class StorageService implements StorageServiceInterface
         }
     }
 
-    private function processImage(string $content, string $finalPath, string $mimeType, array $options): array
+    private function processImage(string $content, string $finalPath, string $mimeType, array $options, ?string $originalName): array
     {
         $results = [];
         $processedContent = $content;
@@ -491,7 +495,7 @@ class StorageService implements StorageServiceInterface
             
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $webOptions);
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions), $this->extractUrlOptions($options));
+            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions), $this->extractUrlOptions($options), $originalName);
             
         } elseif ($shouldCompress) {
             // Dedicated compression
@@ -500,7 +504,7 @@ class StorageService implements StorageServiceInterface
             
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $compressionOptions);
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions), $this->extractUrlOptions($options));
+            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions), $this->extractUrlOptions($options), $originalName);
             
         } elseif ($shouldOptimize || isset($options['image'])) {
             // General image processing with optimization
@@ -524,11 +528,11 @@ class StorageService implements StorageServiceInterface
                 $this->performSecurityScanOnProcessedImage($processedContent, $finalPath, $options);
             }
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $imageOptions), $this->extractUrlOptions($options));
+            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $imageOptions), $this->extractUrlOptions($options), $originalName);
             
         } else {
             // Upload original image
-            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options));
+            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options), $originalName);
         }
         
         // Create thumbnail if requested
@@ -551,20 +555,20 @@ class StorageService implements StorageServiceInterface
             $thumbnailPath = $this->updatePathExtensionIfNeeded($thumbnailPath, $thumbnailOptions);
             
             $thumbnailMimeType = $this->getOptimizedMimeType($mimeType, $thumbnailOptions);
-            $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options));
+            $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName);
         }
 
         return $results;
     }
 
-    private function processVideo($source, string $finalPath, string $mimeType, array $options): array
+    private function processVideo($source, string $finalPath, string $mimeType, array $options, ?string $originalName): array
     {
         $results = [];
         
         // If videoProcessor is null, just upload the original file
         if (!$this->videoProcessor) {
             $content = is_string($source) ? file_get_contents($source) : $source;
-            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options));
+            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options), $originalName);
             return $results;
         }
         
@@ -590,7 +594,7 @@ class StorageService implements StorageServiceInterface
                 
                 // Upload processed video
                 $processedContent = file_get_contents($tempOutputPath);
-                $results['main'] = $this->uploadFile($finalPath, $processedContent, 'video/mp4', $this->extractUrlOptions($options));
+                $results['main'] = $this->uploadFile($finalPath, $processedContent, 'video/mp4', $this->extractUrlOptions($options), $originalName);
                 
                 // Create video thumbnail if requested
                 if (isset($options['video_thumbnail'])) {
@@ -599,14 +603,14 @@ class StorageService implements StorageServiceInterface
                     
                     $thumbnailContent = file_get_contents($thumbnailPath);
                     $thumbnailUploadPath = $this->buildVideoThumbnailPath($finalPath, $options['video_thumbnail']);
-                    $results['thumbnail'] = $this->uploadFile($thumbnailUploadPath, $thumbnailContent, 'image/jpeg', $this->extractUrlOptions($options));
+                    $results['thumbnail'] = $this->uploadFile($thumbnailUploadPath, $thumbnailContent, 'image/jpeg', $this->extractUrlOptions($options), $originalName);
                     
                     unlink($thumbnailPath);
                 }
             } else {
                 // Upload original video
                 $originalContent = file_get_contents($tempInputPath);
-                $results['main'] = $this->uploadFile($finalPath, $originalContent, $mimeType, $this->extractUrlOptions($options));
+                $results['main'] = $this->uploadFile($finalPath, $originalContent, $mimeType, $this->extractUrlOptions($options), $originalName);
                 
                 // Create thumbnail even for original video if requested and FFmpeg is available
                 if (isset($options['video_thumbnail']) && $this->videoProcessor->isFFmpegAvailable()) {
@@ -615,7 +619,7 @@ class StorageService implements StorageServiceInterface
                     
                     $thumbnailContent = file_get_contents($thumbnailPath);
                     $thumbnailUploadPath = $this->buildVideoThumbnailPath($finalPath, $options['video_thumbnail']);
-                    $results['thumbnail'] = $this->uploadFile($thumbnailUploadPath, $thumbnailContent, 'image/jpeg', $this->extractUrlOptions($options));
+                    $results['thumbnail'] = $this->uploadFile($thumbnailUploadPath, $thumbnailContent, 'image/jpeg', $this->extractUrlOptions($options), $originalName);
                     
                     unlink($thumbnailPath);
                 } elseif (isset($options['video_thumbnail']) && !$this->videoProcessor->isFFmpegAvailable()) {
@@ -750,17 +754,18 @@ class StorageService implements StorageServiceInterface
         return $thumbnailDirectory . '/' . $thumbnailFilename;
     }
 
-    private function uploadFile(string $path, string $content, string $mimeType, array $urlOptions = []): array
+    private function uploadFile(string $path, string $content, string $mimeType, array $urlOptions = [], ?string $originalName = null): array
     {
-        $this->filesystem->write($path, $content, [
-            'ContentType' => $mimeType,
-        ]);
+        $this->filesystem->write($path, $content, ['mimetype' => $mimeType]);
+
+        $url = $this->getUrl($path, $urlOptions['expiration'] ?? null, $urlOptions['signed'] ?? null);
 
         return [
-            'path' => $path,
+            'path' => '/' . $path,
+            'url' => $url,
             'size' => strlen($content),
             'mime_type' => $mimeType,
-            'url' => $this->getUrl($path, $urlOptions['expiration'] ?? null, $urlOptions['signed'] ?? null),
+            'original_name' => $originalName,
         ];
     }
 

@@ -31,6 +31,8 @@ Add to `config/filesystems.php`:
 
 ```php
 'disks' => [
+    // other disks
+
     'minio' => [
         'driver' => 's3',
         'key' => env('MINIO_ACCESS_KEY'),
@@ -46,6 +48,12 @@ Add to `config/filesystems.php`:
 
 ### Step 4: Environment Setup
 
+Change this value on `.env` file:
+
+```
+FILESYSTEM_DISK=minio
+```
+
 Add to your `.env` file:
 
 ```env
@@ -56,30 +64,6 @@ MINIO_BUCKET=your-bucket-name
 MINIO_ENDPOINT=http://localhost:9000
 MINIO_REGION=us-east-1
 MINIO_USE_PATH_STYLE_ENDPOINT=true
-
-# Storage Disk Configuration
-MINIO_STORAGE_DISK=minio
-MINIO_STORAGE_DISK_BACKUP=minio
-
-# Security & File Handling
-MINIO_SECURITY_SCAN=true
-MINIO_NAMING_STRATEGY=hash
-MINIO_MAX_FILE_SIZE=10240
-
-# Image Processing Settings
-MINIO_IMAGE_QUALITY=85
-MINIO_IMAGE_MAX_WIDTH=2048
-MINIO_IMAGE_MAX_HEIGHT=2048
-MINIO_IMAGE_CONVERT_FORMAT=jpg
-
-# Video Processing (Optional)
-MINIO_VIDEO_PROCESSING=false
-MINIO_VIDEO_MAX_SIZE=102400
-
-# URL Configuration
-MINIO_URL_DEFAULT_EXPIRATION=
-MINIO_URL_SIGNED_BY_DEFAULT=false
-MINIO_URL_FORCE_HTTPS=false
 ```
 
 **Important Notes:**
@@ -102,15 +86,20 @@ public function upload(Request $request)
 {
     $request->validate(['file' => 'required|file|max:10240']);
   
-    $result = MinioStorage::upload($request->file('file'));
+    $result = MinioStorage::upload($request->file('file'), '/img/');
   
     return response()->json([
         'success' => true,
-        'url' => $result['main']['url'],
-        'path' => $result['main']['path']
+        'url' => $result['main']['url'],			// "http://your-minio-server/your-bucket/img/avatar.png"
+        'path' => $result['main']['path'],			// "/img/avatar.png"
+        'original_name' => $result['main']['original_name'],	// "avatar.png"
+	'size' => $result['main']['size'],			// 102400
+	'mime_type' => $result['mime_type']			// "image/jpeg"
     ]);
 }
 ```
+
+> **Note**: Upload and metadata responses now include `filename` (current storage filename) and `original_name` (original uploaded filename) fields for better file tracking.
 
 ### Image Upload with Processing
 
@@ -119,7 +108,7 @@ public function uploadImage(Request $request)
 {
     $request->validate(['image' => 'required|image|max:10240']);
   
-    $result = MinioStorage::upload($request->file('image'), null, [
+    $result = MinioStorage::upload($request->file('image'), '/img/', [
         'image' => [
             'resize' => ['width' => 1024, 'height' => 768],
             'quality' => 85,
@@ -133,8 +122,9 @@ public function uploadImage(Request $request)
   
     return response()->json([
         'success' => true,
-        'image' => $result['main']['url'],
-        'thumbnail' => $result['thumbnail']['url']
+        'image' => $result['main']['url'],			// "http://your-minio-server/your-bucket/img/avatar.png"
+	'image_path' => $result['main']['path'],		// "/img/avatar-thumb.png"
+        'thumbnail' => $result['thumbnail']['url']		// "http://your-minio-server/your-bucket/img/thumbnails/avatar-thumb.png"
     ]);
 }
 ```
@@ -143,7 +133,7 @@ public function uploadImage(Request $request)
 
 ```php
 // Get URL for existing file (uses config defaults)
-$url = MinioStorage::getUrl('path/to/file.jpg');
+$url = MinioStorage::getUrl('path/to/file.jpg'); // result: "http://your-minio-server/your-bucket/img/avatar.png"
 
 // Get signed URL with custom expiration
 $signedUrl = MinioStorage::getUrl('path/to/file.jpg', 3600, true); // 1 hour, signed
@@ -158,10 +148,10 @@ $publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
 
 ```php
 // Delete a file
-$deleted = MinioStorage::delete('path/to/file.jpg');
+$deleted = MinioStorage::delete('path/to/file.jpg'); //true
 
 // Check if file exists
-$exists = MinioStorage::fileExists('path/to/file.jpg');
+$exists = MinioStorage::fileExists('path/to/file.jpg'); //true
 ```
 
 ## Examples
@@ -189,6 +179,37 @@ Check out the `examples/` folder for complete working examples:
 If you want to see the detailed API reference, check out this [API REFERENCE](API-REFERENCE.md) document.
 
 ## Configuration Options
+
+### Optional env Variables
+
+Optional `.env` variable:
+
+```env
+# Storage Disk Configuration
+MINIO_STORAGE_DISK=minio
+MINIO_STORAGE_DISK_BACKUP=minio
+
+# Security & File Handling
+MINIO_SECURITY_SCAN=true
+MINIO_NAMING_STRATEGY=hash
+MINIO_MAX_FILE_SIZE=10240
+
+# Image Processing Settings
+MINIO_IMAGE_QUALITY=85
+MINIO_IMAGE_MAX_WIDTH=2048
+MINIO_IMAGE_MAX_HEIGHT=2048
+MINIO_IMAGE_CONVERT_FORMAT=jpg
+
+# Video Processing (Optional)
+MINIO_VIDEO_PROCESSING=false
+MINIO_VIDEO_MAX_SIZE=102400
+
+# URL Configuration
+MINIO_URL_DEFAULT_EXPIRATION=
+MINIO_URL_SIGNED_BY_DEFAULT=false
+MINIO_URL_FORCE_HTTPS=false
+```
+
 
 ### Image Processing
 
