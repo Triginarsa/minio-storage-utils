@@ -45,9 +45,10 @@ interface StorageServiceInterface
      *
      * @param string $path The path of the file.
      * @param int|null $expiration Expiration time in seconds (null for default).
+     * @param bool|null $signed Whether to generate a signed URL (overrides config).
      * @return string The presigned URL.
      */
-    public function getUrl(string $path, ?int $expiration = null): string;
+    public function getUrl(string $path, ?int $expiration = null, ?bool $signed = null): string;
 
     /**
      * Get a public URL for a file (no expiration, for public buckets).

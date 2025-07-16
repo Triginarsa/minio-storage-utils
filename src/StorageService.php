@@ -479,85 +479,50 @@ class StorageService implements StorageServiceInterface
     private function processImage(string $content, string $finalPath, string $mimeType, array $options, ?string $originalName): array
     {
         $results = [];
-        $processedContent = $content;
-        
-        // Check for compression-specific options
-        $shouldCompress = $options['compress'] ?? false;
-        $shouldOptimize = $options['optimize'] ?? false;
-        $shouldOptimizeForWeb = $options['optimize_for_web'] ?? false;
-        
-        // Apply different processing based on options
-        if ($shouldOptimizeForWeb) {
-            // Web optimization (resize + compress for web)
-            $webOptions = array_merge(function_exists('config') ? config('minio-storage.web_optimization', []) : [], $options['web_options'] ?? []);
-            $processedContent = $this->imageProcessor->optimizeForWeb($content, $webOptions);
-            
-            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $webOptions);
-            
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions), $this->extractUrlOptions($options), $originalName);
-            
-        } elseif ($shouldCompress) {
-            // Dedicated compression
-            $compressionOptions = array_merge(function_exists('config') ? config('minio-storage.compression', []) : [], $options['compression_options'] ?? []);
-            $processedContent = $this->imageProcessor->compressImage($content, $compressionOptions);
-            
-            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $compressionOptions);
-            
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions), $this->extractUrlOptions($options), $originalName);
-            
-        } elseif ($shouldOptimize || isset($options['image'])) {
-            // General image processing with optimization
-            $defaultImageOptions = function_exists('config') ? config('minio-storage.image', []) : [];
-            
-            // Merge user options AFTER defaults to ensure user settings take precedence
-            $imageOptions = array_merge($defaultImageOptions, $options['image'] ?? []);
-            
-            // Enable optimization if requested (but don't override user quality settings)
-            if ($shouldOptimize) {
-                $imageOptions['optimize'] = true;
-                $imageOptions['smart_compression'] = $options['smart_compression'] ?? true;
-            }
-            
-            $processedContent = $this->imageProcessor->process($content, $imageOptions);
+        $urlOptions = $this->extractUrlOptions($options);
 
-            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $imageOptions);
+        try {
+            // Process and upload the main image
+            $processedContent = $this->imageProcessor->process($content, $options['image'] ?? []);
+            $finalMimeType = $this->getOptimizedMimeType($mimeType, $options['image'] ?? []);
+            $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $options['image'] ?? []);
             
-            // Security scan processed image if enabled
-            if ($options['scan'] ?? false) {
-                $this->performSecurityScanOnProcessedImage($processedContent, $finalPath, $options);
-            }
+            // Security scan on the processed image
+            $this->performSecurityScanOnProcessedImage($processedContent, $finalPath, $options);
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $imageOptions), $this->extractUrlOptions($options), $originalName);
-            
-        } else {
-            // Upload original image
-            $results['main'] = $this->uploadFile($finalPath, $content, $mimeType, $this->extractUrlOptions($options), $originalName);
-        }
-        
-        // Create thumbnail if requested
-        if (isset($options['thumbnail'])) {
-            $thumbnailOptions = array_merge(function_exists('config') ? config('minio-storage.thumbnail', []) : [], $options['thumbnail']);
-            
-            // Apply compression to thumbnail as well
-            if ($shouldCompress || $shouldOptimize) {
-                $thumbnailOptions['quality'] = $thumbnailOptions['quality'] ?? 75;
-                $thumbnailOptions['optimize'] = true;
-            }
-            
-            if (isset($options['watermark'])) {
-                $thumbnailOptions['watermark'] = $this->prepareThumbnailWatermarkOptions($options['watermark'], $thumbnailOptions);
-            }
-            
-            $thumbnailContent = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
-            $thumbnailPath = $this->buildThumbnailPath($finalPath, $thumbnailOptions);
-            
-            $thumbnailPath = $this->updatePathExtensionIfNeeded($thumbnailPath, $thumbnailOptions);
-            
-            $thumbnailMimeType = $this->getOptimizedMimeType($mimeType, $thumbnailOptions);
-            $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName);
-        }
+            $results['main'] = $this->uploadFile($finalPath, $processedContent, $finalMimeType, $urlOptions, $originalName);
 
-        return $results;
+            // Thumbnail generation
+            if (!empty($options['thumbnail'])) {
+                $thumbnailOptions = array_merge(['suffix' => '-thumb', 'path' => 'thumbnails'], $options['thumbnail']);
+            
+                // Apply compression to thumbnail as well
+                if ($shouldCompress || $shouldOptimize) {
+                    $thumbnailOptions['quality'] = $thumbnailOptions['quality'] ?? 75;
+                    $thumbnailOptions['optimize'] = true;
+                }
+                
+                if (isset($options['watermark'])) {
+                    $thumbnailOptions['watermark'] = $this->prepareThumbnailWatermarkOptions($options['watermark'], $thumbnailOptions);
+                }
+                
+                $thumbnailContent = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
+                $thumbnailPath = $this->buildThumbnailPath($finalPath, $thumbnailOptions);
+                
+                $thumbnailPath = $this->updatePathExtensionIfNeeded($thumbnailPath, $thumbnailOptions);
+                
+                $thumbnailMimeType = $this->getOptimizedMimeType($mimeType, $thumbnailOptions);
+                $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName);
+            }
+
+            return $results;
+        } catch (\Exception $e) {
+            $this->logger->error('Image processing failed', [
+                'path' => $finalPath,
+                'error' => $e->getMessage()
+            ]);
+            throw new UploadException("Failed to process image: {$e->getMessage()}", ['path' => $finalPath], $e);
+        }
     }
 
     private function processVideo($source, string $finalPath, string $mimeType, array $options, ?string $originalName): array
@@ -755,21 +720,37 @@ class StorageService implements StorageServiceInterface
 
     private function uploadFile(string $path, string $content, string $mimeType, array $urlOptions = [], ?string $originalName = null): array
     {
-        $this->filesystem->write($path, $content, ['mimetype' => $mimeType]);
+        $this->logger->info('Uploading file', ['path' => $path, 'mime_type' => $mimeType]);
 
-        $url = $this->getUrl($path, $urlOptions['expiration'] ?? null, $urlOptions['signed'] ?? null);
+        try {
+            $this->filesystem->write($path, $content);
 
-        // Ensure path has single leading slash
-        $normalizedPath = '/' . ltrim($path, '/');
-        
-        return [
-            'path' => $normalizedPath,
-            'url' => $url,
-            'size' => strlen($content),
-            'mime_type' => $mimeType,
-            'original_name' => $originalName,
-            'file_name' => basename($path),
-        ];
+            $result = [
+                'success' => true,
+                'path' => '/' . ltrim($path, '/'),
+                'file_name' => basename($path),
+                'original_name' => $originalName,
+                'url' => $this->getUrl('/' . ltrim($path, '/'), $urlOptions['expiration'] ?? null, $urlOptions['signed'] ?? null),
+                'size' => strlen($content),
+                'mime_type' => $mimeType,
+            ];
+            
+            // Add image dimensions if applicable
+            if ($this->imageProcessor->isImage($mimeType)) {
+                $imageInfo = $this->imageProcessor->getImageInfo($content);
+                $result = array_merge($result, $imageInfo);
+            }
+
+            $this->logger->info('File uploaded successfully', ['path' => $path]);
+            return $result;
+
+        } catch (FilesystemException $e) {
+            $this->logger->error('File upload failed', [
+                'path' => $path,
+                'error' => $e->getMessage()
+            ]);
+            throw new UploadException("Failed to upload to path: {$path}", ['path' => $path], $e);
+        }
     }
 
     private function downloadToTemp(string $path): string
