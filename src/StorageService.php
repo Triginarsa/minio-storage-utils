@@ -167,12 +167,11 @@ class StorageService implements StorageServiceInterface
             }
 
             $metadata = [
-                'path' => $path,
-                'filename' => basename($path),
+                'path' => '/' . $path,
+                'file_name' => basename($path),
                 'size' => $this->filesystem->fileSize($path),
                 'mime_type' => $this->filesystem->mimeType($path),
                 'last_modified' => $this->filesystem->lastModified($path),
-                'visibility' => $this->filesystem->visibility($path),
             ];
 
             // Add type-specific metadata
