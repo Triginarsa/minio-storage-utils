@@ -90,9 +90,10 @@ public function upload(Request $request)
   
     return response()->json([
         'success' => true,
-        'url' => $result['main']['url'],			// "http://your-minio-server/your-bucket/img/avatar.png"
-        'path' => $result['main']['path'],			// "/img/avatar.png"
+        'url' => $result['main']['url'],			// "http://your-minio-server/your-bucket/img/avatar-1.png"
+        'path' => $result['main']['path'],			// "/img/avatar-1.png"
         'original_name' => $result['main']['original_name'],	// "avatar.png"
+	'file_name' => $result['main']['file_name'],		// "avatar-1.png"
 	'size' => $result['main']['size'],			// 102400
 	'mime_type' => $result['mime_type']			// "image/jpeg"
     ]);
@@ -122,9 +123,9 @@ public function uploadImage(Request $request)
   
     return response()->json([
         'success' => true,
-        'image' => $result['main']['url'],			// "http://your-minio-server/your-bucket/img/avatar.png"
-	'image_path' => $result['main']['path'],		// "/img/avatar-thumb.png"
-        'thumbnail' => $result['thumbnail']['url']		// "http://your-minio-server/your-bucket/img/thumbnails/avatar-thumb.png"
+        'image' => $result['main']['url'],			// "http://your-minio-server/your-bucket/img/avatar-1.png"
+	'image_path' => $result['main']['path'],		// "/img/avatar-1-thumb.png"
+        'thumbnail' => $result['thumbnail']['url']		// "http://your-minio-server/your-bucket/img/thumbnails/avatar-1-thumb.png"
     ]);
 }
 ```
@@ -209,7 +210,6 @@ MINIO_URL_DEFAULT_EXPIRATION=
 MINIO_URL_SIGNED_BY_DEFAULT=false
 MINIO_URL_FORCE_HTTPS=false
 ```
-
 
 ### Image Processing
 

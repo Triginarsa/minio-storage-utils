@@ -760,12 +760,16 @@ class StorageService implements StorageServiceInterface
 
         $url = $this->getUrl($path, $urlOptions['expiration'] ?? null, $urlOptions['signed'] ?? null);
 
+        // Ensure path has single leading slash
+        $normalizedPath = '/' . ltrim($path, '/');
+        
         return [
-            'path' => '/' . $path,
+            'path' => $normalizedPath,
             'url' => $url,
             'size' => strlen($content),
             'mime_type' => $mimeType,
             'original_name' => $originalName,
+            'file_name' => basename($path),
         ];
     }
 
