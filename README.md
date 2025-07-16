@@ -100,8 +100,6 @@ public function upload(Request $request)
 }
 ```
 
-> **Note**: Upload and metadata responses now include `filename` (current storage filename) and `original_name` (original uploaded filename) fields for better file tracking.
-
 ### Image Upload with Processing
 
 ```php
@@ -145,6 +143,86 @@ $publicUrl = MinioStorage::getUrl('path/to/file.jpg', null, false);
 $publicUrl = MinioStorage::getPublicUrl('path/to/file.jpg');
 ```
 
+Example Usage:
+
+```php
+use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
+
+public function view(Request $request)
+{
+    $request->validate(['imagePath' => 'required|string']);
+
+    $imagePath = urldecode($request->input('imagePath'))
+
+    //check if the image available on storage
+    if (!MinioStorage::fileExists($imagePath)){
+	return response()->json(['success => false', 'message' => 'File not found'], 404)
+    }
+
+    $result = MinioStorage::getUrl($imagePath);
+  
+    return response()->json([
+        'success' => true,
+        'image_url' => $result,				// "http://your-minio-server/your-bucket/img/avatar-1.png"
+    ]);
+}
+
+```
+
+### Get File Metadata
+
+```
+$url = MinioStorage::getUrl('path/to/file.jpg');
+
+// Result if file is Image:
+// "path":"/img/avatar-1.png",
+// "file_name": "avatar-1.png",
+// "size": 381422,
+// "mime_type": "image/jpeg",
+// "last_modified": 1752626650,
+// "width": 1331,
+// "height": 2000,
+// "aspect_ratio": 0.67,
+// "file_size": 381422,
+// "megapixels": 2.66
+
+// Result if file is Docs:
+// "path":"/doc/documents.pdf",
+// "file_name": "documents-1.pdf",
+// "size": 381422,
+// "mime_type": "application/pdf",
+// "last_modified": 1752626650,
+```
+
+Example Usage:
+
+```php
+use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
+
+public function metadata(Request $request)
+{
+    $request->validate(['imagePath' => 'required|string']);
+
+    $imagePath = urldecode($request->input('imagePath'))
+
+    //check if the image available on storage
+    if (!MinioStorage::fileExists($imagePath)){
+	return response()->json(['success => false', 'message' => 'File not found'], 404)
+    }
+
+    $result = MinioStorage::getMetadata($imagePath);
+  
+    return response()->json([
+        'success' => true,
+        'path' => $result['path'],				// "/img/avatar-1.png"
+	'file_name' => $result['main']['file_name'],		// "avatar-1.png"
+	'size' => $result['main']['size'],			// 102400
+	'mime_type' => $result['mime_type'],			// "image/jpeg"
+	'last_modified' => $result['last_modified']		// "1752626650"
+    ]);
+}
+```
+
 ### Delete Files
 
 ```php
@@ -153,6 +231,31 @@ $deleted = MinioStorage::delete('path/to/file.jpg'); //true
 
 // Check if file exists
 $exists = MinioStorage::fileExists('path/to/file.jpg'); //true
+```
+
+Example Usage:
+
+```php
+use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
+
+public function delete(Request $request)
+{
+    $request->validate(['imagePath' => 'required|string']);
+
+    $imagePath = urldecode($request->input('imagePath'))
+
+    //check if the image available on storage
+    if (!MinioStorage::fileExists($imagePath)){
+	return response()->json(['success => false', 'message' => 'File not found'], 404)
+    }
+
+    $result = MinioStorage::delete($imagePath);
+  
+    return response()->json([
+        'success' => true,
+	'message' => 'Image deleted successfully'
+    ]);
+}
 ```
 
 ## Examples
