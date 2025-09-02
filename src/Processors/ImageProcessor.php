@@ -35,7 +35,7 @@ class ImageProcessor
         $this->logger = $logger;
     }
 
-    public function process(string $content, array $options): string
+    public function process(string $content, array $options): string|array
     {
         $this->logger->info('Image processing started', ['options' => $options]);
 
@@ -177,8 +177,11 @@ class ImageProcessor
         }
 
         // Add watermark
+        $watermarkMetadata = null;
         if (isset($options['watermark'])) {
-            $image = $this->applyWatermark($image, $options['watermark']);
+            $watermarkResult = $this->applyWatermark($image, $options['watermark']);
+            $image = $watermarkResult['image'];
+            $watermarkMetadata = $watermarkResult['metadata'] ?? null;
         }
 
         // Strip metadata if enabled
@@ -195,18 +198,33 @@ class ImageProcessor
         $finalSize = strlen($encoded->toString());
         $compressionRatio = round((1 - ($finalSize / $originalSize)) * 100, 2);
         
-        $this->logger->info('Image processing completed', [
+        $processingMetadata = [
             'original_size' => $originalSize,
             'final_size' => $finalSize,
             'compression_ratio' => $compressionRatio . '%',
             'format' => $format,
             'quality' => $quality
-        ]);
+        ];
+
+        // Add watermark metadata if available
+        if ($watermarkMetadata) {
+            $processingMetadata['watermark'] = $watermarkMetadata;
+        }
+
+        $this->logger->info('Image processing completed', $processingMetadata);
+
+        // Return array with content and metadata when watermark was applied
+        if ($watermarkMetadata) {
+            return [
+                'content' => $encoded->toString(),
+                'metadata' => $processingMetadata
+            ];
+        }
 
         return $encoded->toString();
     }
 
-    public function createThumbnail(string $content, array $options): string
+    public function createThumbnail(string $content, array $options): string|array
     {
         $this->logger->info('Thumbnail creation started', ['options' => $options]);
 
@@ -240,8 +258,11 @@ class ImageProcessor
         }
 
         // Apply watermark to thumbnail if specified
+        $watermarkMetadata = null;
         if (isset($options['watermark'])) {
-            $image = $this->applyWatermark($image, $options['watermark']);
+            $watermarkResult = $this->applyWatermark($image, $options['watermark']);
+            $image = $watermarkResult['image'];
+            $watermarkMetadata = $watermarkResult['metadata'] ?? null;
         }
 
         $quality = $options['quality'] ?? 75;
@@ -249,13 +270,28 @@ class ImageProcessor
         
         $encoded = $this->encodeWithAdvancedCompression($image, $format, $quality, $options);
         
-        $this->logger->info('Thumbnail created', [
+        $processingMetadata = [
             'width' => $width,
             'height' => $height,
             'method' => $method,
             'format' => $format,
             'quality' => $quality
-        ]);
+        ];
+
+        // Add watermark metadata if available
+        if ($watermarkMetadata) {
+            $processingMetadata['watermark'] = $watermarkMetadata;
+        }
+
+        $this->logger->info('Thumbnail created', $processingMetadata);
+
+        // Return array with content and metadata when watermark was applied
+        if ($watermarkMetadata) {
+            return [
+                'content' => $encoded->toString(),
+                'metadata' => $processingMetadata
+            ];
+        }
 
         return $encoded->toString();
     }
@@ -352,12 +388,29 @@ class ImageProcessor
     {
         $watermarkPath = $watermarkOptions['path'] ?? null;
         
-        if (!$watermarkPath || !file_exists($watermarkPath)) {
-            $this->logger->warning('Watermark path not found', ['path' => $watermarkPath]);
-            return $image;
+        if (!$watermarkPath) {
+            $this->logger->warning('Watermark path not provided');
+            return [
+                'image' => $image,
+                'metadata' => null
+            ];
         }
 
-        $watermark = $this->imageManager->read($watermarkPath);
+        // Handle Laravel public path resolution
+        $resolvedPath = $this->resolveWatermarkPath($watermarkPath);
+        
+        if (!file_exists($resolvedPath)) {
+            $this->logger->warning('Watermark path not found', [
+                'original_path' => $watermarkPath,
+                'resolved_path' => $resolvedPath
+            ]);
+            return [
+                'image' => $image,
+                'metadata' => null
+            ];
+        }
+
+        $watermark = $this->imageManager->read($resolvedPath);
         
         // Get image dimensions
         $imageWidth = $image->width();
@@ -389,17 +442,26 @@ class ImageProcessor
             $config['opacity']
         );
 
-        $this->logger->info('Watermark applied', [
-            'watermark_path' => $watermarkPath,
+        $watermarkMetadata = [
+            'watermark_applied' => true,
+            'watermark_path' => $resolvedPath,
+            'watermark_filename' => basename($resolvedPath),
+            'original_path' => $watermarkPath,
             'position' => $config['position'],
             'opacity' => $config['opacity'],
             'image_size' => $imageWidth . 'x' . $imageHeight,
             'watermark_size' => $watermark->width() . 'x' . $watermark->height(),
             'auto_resize' => $config['auto_resize'],
-            'resize_method' => $config['resize_method']
-        ]);
+            'resize_method' => $config['resize_method'],
+            'size_ratio' => $config['size_ratio']
+        ];
 
-        return $image;
+        $this->logger->info('Watermark applied', $watermarkMetadata);
+
+        return [
+            'image' => $image,
+            'metadata' => $watermarkMetadata
+        ];
     }
 
     private function resizeWatermark($watermark, int $imageWidth, int $imageHeight, array $config)
@@ -609,5 +671,51 @@ class ImageProcessor
         ]);
         
         return $encoded->toString();
+    }
+
+    /**
+     * Resolve watermark path to handle Laravel public assets and relative paths
+     */
+    private function resolveWatermarkPath(string $path): string
+    {
+        // If it's already an absolute path, return as-is
+        if (str_starts_with($path, '/') && file_exists($path)) {
+            return $path;
+        }
+
+        // Handle Laravel public path (public/...)
+        if (function_exists('public_path') && str_starts_with($path, 'public/')) {
+            $publicPath = public_path(substr($path, 7)); // Remove 'public/' prefix
+            if (file_exists($publicPath)) {
+                return $publicPath;
+            }
+        }
+
+        // Handle Laravel public path without 'public/' prefix
+        if (function_exists('public_path')) {
+            $publicPath = public_path($path);
+            if (file_exists($publicPath)) {
+                return $publicPath;
+            }
+        }
+
+        // Handle Laravel storage path
+        if (function_exists('storage_path') && str_starts_with($path, 'storage/')) {
+            $storagePath = storage_path(substr($path, 8)); // Remove 'storage/' prefix
+            if (file_exists($storagePath)) {
+                return $storagePath;
+            }
+        }
+
+        // Handle relative paths from current working directory
+        if (!str_starts_with($path, '/')) {
+            $relativePath = getcwd() . '/' . $path;
+            if (file_exists($relativePath)) {
+                return $relativePath;
+            }
+        }
+
+        // Return original path if no resolution worked
+        return $path;
     }
 } 

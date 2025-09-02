@@ -1,6 +1,22 @@
 <?php
 
 // Laravel Controller for Watermark Examples
+// 
+// ✅ UPDATED: This example now demonstrates the watermark metadata fix!
+// 
+// WHAT WAS FIXED:
+// - Watermark path is no longer null after image processing
+// - Watermark metadata is properly included in the response
+// - Public asset paths are resolved correctly
+// - Both main images and thumbnails support watermark metadata
+// 
+// NEW METHODS ADDED:
+// - demonstrateWatermarkMetadata(): Shows the fix in action with detailed metadata
+// - uploadWithPublicAssetWatermark(): Demonstrates public path resolution
+// 
+// UPDATED METHODS:
+// - uploadWithBasicWatermark(): Now includes watermark_info in response
+// - Frontend JavaScript: Now displays watermark metadata in the UI
 use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -55,7 +71,24 @@ class WatermarkController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Image uploaded with watermark successfully',
-                'data' => $result
+                'data' => $result,
+                'watermark_info' => [
+                    'main_image' => [
+                        'watermark_applied' => isset($result['main']['processing']['watermark']),
+                        'watermark_path' => $result['main']['processing']['watermark']['watermark_path'] ?? null,
+                        'watermark_filename' => $result['main']['processing']['watermark']['watermark_filename'] ?? null,
+                        'position' => $result['main']['processing']['watermark']['position'] ?? null,
+                        'opacity' => $result['main']['processing']['watermark']['opacity'] ?? null,
+                        'image_size' => $result['main']['processing']['watermark']['image_size'] ?? null,
+                        'watermark_size' => $result['main']['processing']['watermark']['watermark_size'] ?? null,
+                    ],
+                    'thumbnail' => [
+                        'watermark_applied' => isset($result['thumbnail']['processing']['watermark']),
+                        'watermark_path' => $result['thumbnail']['processing']['watermark']['watermark_path'] ?? null,
+                        'position' => $result['thumbnail']['processing']['watermark']['position'] ?? null,
+                        'opacity' => $result['thumbnail']['processing']['watermark']['opacity'] ?? null,
+                    ]
+                ]
             ]);
 
         } catch (\Exception $e) {
@@ -398,6 +431,173 @@ class WatermarkController extends Controller
     }
 
     /**
+     * Demonstrate watermark metadata access (NEW - shows the fix in action)
+     */
+    public function demonstrateWatermarkMetadata(Request $request)
+    {
+        $request->validate([
+            'image' => 'required|image|max:10240',
+            'watermark' => 'required|image|max:2048',
+        ]);
+
+        try {
+            $watermarkPath = $this->storeWatermarkTemporarily($request->file('watermark'));
+            
+            $result = MinioStorage::upload(
+                $request->file('image'),
+                'uploads/watermarked/metadata-demo/',
+                [
+                    'image' => [
+                        'quality' => 85,
+                        'max_width' => 1920,
+                        'max_height' => 1080,
+                    ],
+                    'watermark' => [
+                        'path' => $watermarkPath,
+                        'position' => 'bottom-right',
+                        'opacity' => 70,
+                        'size_ratio' => 0.15,
+                    ],
+                    'thumbnail' => [
+                        'width' => 300,
+                        'height' => 300,
+                        'method' => 'crop',
+                        'watermark' => [
+                            'path' => $watermarkPath,
+                            'position' => 'bottom-right',
+                            'opacity' => 60,
+                            'size_ratio' => 0.2,
+                        ]
+                    ]
+                ]
+            );
+            
+            $this->cleanupTemporaryFile($watermarkPath);
+            
+            // ✅ NEW: Extract watermark metadata from the response
+            $mainWatermark = $result['main']['processing']['watermark'] ?? null;
+            $thumbnailWatermark = $result['thumbnail']['processing']['watermark'] ?? null;
+            
+            return response()->json([
+                'success' => true,
+                'message' => '🎉 Watermark metadata is now properly included in the response!',
+                'data' => $result,
+                'watermark_demonstration' => [
+                    'fix_status' => '✅ FIXED: Watermark path is no longer null!',
+                    'main_image_watermark' => [
+                        'applied' => $mainWatermark !== null,
+                        'path' => $mainWatermark['watermark_path'] ?? 'Not found',
+                        'filename' => $mainWatermark['watermark_filename'] ?? 'Not found',
+                        'position' => $mainWatermark['position'] ?? 'Not found',
+                        'opacity' => $mainWatermark['opacity'] ?? 'Not found',
+                        'image_size' => $mainWatermark['image_size'] ?? 'Not found',
+                        'watermark_size' => $mainWatermark['watermark_size'] ?? 'Not found',
+                    ],
+                    'thumbnail_watermark' => [
+                        'applied' => $thumbnailWatermark !== null,
+                        'path' => $thumbnailWatermark['watermark_path'] ?? 'Not found',
+                        'filename' => $thumbnailWatermark['watermark_filename'] ?? 'Not found',
+                        'position' => $thumbnailWatermark['position'] ?? 'Not found',
+                        'opacity' => $thumbnailWatermark['opacity'] ?? 'Not found',
+                        'image_size' => $thumbnailWatermark['image_size'] ?? 'Not found',
+                        'watermark_size' => $thumbnailWatermark['watermark_size'] ?? 'Not found',
+                    ],
+                    'before_fix' => 'Previously, watermark_path would be null',
+                    'after_fix' => 'Now, watermark_path contains the actual file path',
+                    'available_metadata' => [
+                        'watermark_applied',
+                        'watermark_path',
+                        'watermark_filename', 
+                        'position',
+                        'opacity',
+                        'image_size',
+                        'watermark_size',
+                        'auto_resize',
+                        'resize_method',
+                        'size_ratio'
+                    ]
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Upload with public asset watermark (demonstrates path resolution)
+     */
+    public function uploadWithPublicAssetWatermark(Request $request)
+    {
+        $request->validate([
+            'image' => 'required|image|max:10240',
+            'watermark_path' => 'required|string', // Path to public asset
+        ]);
+
+        try {
+            $watermarkPath = $request->input('watermark_path');
+            
+            // The system will now properly resolve public paths like:
+            // - 'public/images/logo.png'
+            // - 'images/logo.png' (will check public/images/logo.png)
+            // - '/absolute/path/to/watermark.png'
+            
+            $result = MinioStorage::upload(
+                $request->file('image'),
+                'uploads/watermarked/public-assets/',
+                [
+                    'image' => [
+                        'quality' => 85,
+                        'max_width' => 1920,
+                        'max_height' => 1080,
+                    ],
+                    'watermark' => [
+                        'path' => $watermarkPath, // Can be public path now!
+                        'position' => 'bottom-right',
+                        'opacity' => 70,
+                        'size_ratio' => 0.15,
+                    ],
+                    'thumbnail' => [
+                        'width' => 300,
+                        'height' => 300,
+                        'method' => 'crop',
+                        'watermark' => [
+                            'path' => $watermarkPath,
+                            'position' => 'bottom-right',
+                            'opacity' => 60,
+                        ]
+                    ]
+                ]
+            );
+            
+            // Show the path resolution in action
+            $mainWatermark = $result['main']['processing']['watermark'] ?? null;
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Image uploaded with public asset watermark',
+                'data' => $result,
+                'path_resolution_demo' => [
+                    'original_path_provided' => $watermarkPath,
+                    'resolved_path' => $mainWatermark['watermark_path'] ?? 'Failed to resolve',
+                    'path_resolution_working' => $mainWatermark !== null,
+                    'note' => 'The system now properly resolves Laravel public paths!'
+                ]
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+                'note' => 'Make sure the watermark file exists at the specified public path'
+            ], 500);
+        }
+    }
+
+    /**
      * Upload with custom watermark options
      */
     public function uploadWithCustomWatermarkOptions(Request $request)
@@ -512,6 +712,10 @@ Route::post('/watermark/high-quality', [WatermarkController::class, 'uploadHighQ
 Route::post('/watermark/batch', [WatermarkController::class, 'batchUploadWithWatermarks']);
 Route::post('/watermark/compressed', [WatermarkController::class, 'uploadWithWatermarkAndCompression']);
 Route::post('/watermark/custom', [WatermarkController::class, 'uploadWithCustomWatermarkOptions']);
+
+// NEW ROUTES - Demonstrate the watermark metadata fix
+Route::post('/watermark/metadata-demo', [WatermarkController::class, 'demonstrateWatermarkMetadata']); // Shows the fix in action
+Route::post('/watermark/public-assets', [WatermarkController::class, 'uploadWithPublicAssetWatermark']); // Shows public path resolution
 */
 
 // Blade view example for watermark upload form (resources/views/watermark-upload.blade.php)
@@ -602,12 +806,31 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(response => response.json())
         .then(data => {
             if (data.success) {
+                const watermarkInfo = data.data.main.processing?.watermark;
+                const watermarkDisplay = watermarkInfo ? `
+                    <div class="mt-3 p-3 bg-light rounded">
+                        <h6>✅ Watermark Metadata (Fixed!)</h6>
+                        <small class="text-muted">Previously this would show as null</small>
+                        <ul class="list-unstyled mt-2">
+                            <li><strong>Path:</strong> ${watermarkInfo.watermark_path || 'N/A'}</li>
+                            <li><strong>Filename:</strong> ${watermarkInfo.watermark_filename || 'N/A'}</li>
+                            <li><strong>Position:</strong> ${watermarkInfo.position || 'N/A'}</li>
+                            <li><strong>Opacity:</strong> ${watermarkInfo.opacity || 'N/A'}%</li>
+                            <li><strong>Image Size:</strong> ${watermarkInfo.image_size || 'N/A'}</li>
+                            <li><strong>Watermark Size:</strong> ${watermarkInfo.watermark_size || 'N/A'}</li>
+                            <li><strong>Auto Resize:</strong> ${watermarkInfo.auto_resize ? 'Yes' : 'No'}</li>
+                            <li><strong>Resize Method:</strong> ${watermarkInfo.resize_method || 'N/A'}</li>
+                        </ul>
+                    </div>
+                ` : '<div class="mt-3 p-3 bg-warning rounded"><small>No watermark metadata found</small></div>';
+                
                 resultDiv.innerHTML = `
                     <div class="alert alert-success">
                         <h5>Upload Successful!</h5>
                         <p><strong>Main Image:</strong> <a href="${data.data.main.url}" target="_blank">${data.data.main.url}</a></p>
                         <p><strong>Thumbnail:</strong> <a href="${data.data.thumbnail.url}" target="_blank">${data.data.thumbnail.url}</a></p>
                         <p><strong>File Size:</strong> ${data.data.main.size} bytes</p>
+                        ${watermarkDisplay}
                     </div>
                 `;
             } else {

@@ -454,4 +454,143 @@ class ImageProcessorTest extends TestCase
         
         return $content;
     }
+
+    public function testWatermarkWithMetadata()
+    {
+        // Create a simple watermark image
+        $watermarkPath = sys_get_temp_dir() . '/test_watermark.png';
+        $watermark = imagecreate(100, 30);
+        $white = imagecolorallocate($watermark, 255, 255, 255);
+        $black = imagecolorallocate($watermark, 0, 0, 0);
+        imagefill($watermark, 0, 0, $white);
+        imagestring($watermark, 3, 10, 10, 'TEST', $black);
+        imagepng($watermark, $watermarkPath);
+        imagedestroy($watermark);
+
+        $options = [
+            'quality' => 85,
+            'watermark' => [
+                'path' => $watermarkPath,
+                'position' => 'bottom-right',
+                'opacity' => 70,
+                'size_ratio' => 0.15,
+            ]
+        ];
+
+        $result = $this->processor->process($this->testImageContent, $options);
+        
+        // Should return array with content and metadata when watermark is applied
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('content', $result);
+        $this->assertArrayHasKey('metadata', $result);
+        
+        // Check watermark metadata
+        $metadata = $result['metadata'];
+        $this->assertArrayHasKey('watermark', $metadata);
+        
+        $watermarkMeta = $metadata['watermark'];
+        $this->assertArrayHasKey('watermark_applied', $watermarkMeta);
+        $this->assertArrayHasKey('watermark_path', $watermarkMeta);
+        $this->assertArrayHasKey('watermark_filename', $watermarkMeta);
+        $this->assertArrayHasKey('position', $watermarkMeta);
+        $this->assertArrayHasKey('opacity', $watermarkMeta);
+        
+        $this->assertTrue($watermarkMeta['watermark_applied']);
+        $this->assertEquals($watermarkPath, $watermarkMeta['watermark_path']);
+        $this->assertEquals('test_watermark.png', $watermarkMeta['watermark_filename']);
+        $this->assertEquals('bottom-right', $watermarkMeta['position']);
+        $this->assertEquals(70, $watermarkMeta['opacity']);
+        
+        // Content should still be a valid image string
+        $this->assertNotEmpty($result['content']);
+        $this->assertIsString($result['content']);
+        
+        // Clean up
+        unlink($watermarkPath);
+    }
+
+    public function testThumbnailWithWatermarkMetadata()
+    {
+        // Create a simple watermark image
+        $watermarkPath = sys_get_temp_dir() . '/test_watermark_thumb.png';
+        $watermark = imagecreate(50, 20);
+        $white = imagecolorallocate($watermark, 255, 255, 255);
+        $black = imagecolorallocate($watermark, 0, 0, 0);
+        imagefill($watermark, 0, 0, $white);
+        imagestring($watermark, 2, 5, 5, 'THUMB', $black);
+        imagepng($watermark, $watermarkPath);
+        imagedestroy($watermark);
+
+        $options = [
+            'width' => 200,
+            'height' => 200,
+            'method' => 'crop',
+            'watermark' => [
+                'path' => $watermarkPath,
+                'position' => 'center',
+                'opacity' => 50,
+            ]
+        ];
+
+        $result = $this->processor->createThumbnail($this->testImageContent, $options);
+        
+        // Should return array with content and metadata when watermark is applied
+        $this->assertIsArray($result);
+        $this->assertArrayHasKey('content', $result);
+        $this->assertArrayHasKey('metadata', $result);
+        
+        // Check thumbnail metadata
+        $metadata = $result['metadata'];
+        $this->assertArrayHasKey('watermark', $metadata);
+        
+        $watermarkMeta = $metadata['watermark'];
+        $this->assertTrue($watermarkMeta['watermark_applied']);
+        $this->assertEquals($watermarkPath, $watermarkMeta['watermark_path']);
+        $this->assertEquals('center', $watermarkMeta['position']);
+        $this->assertEquals(50, $watermarkMeta['opacity']);
+        
+        // Clean up
+        unlink($watermarkPath);
+    }
+
+    public function testWatermarkPathResolution()
+    {
+        // Create a watermark in a public-like path structure
+        $publicDir = sys_get_temp_dir() . '/public';
+        if (!is_dir($publicDir)) {
+            mkdir($publicDir, 0755, true);
+        }
+        
+        $watermarkPath = $publicDir . '/logo.png';
+        $watermark = imagecreate(80, 25);
+        $white = imagecolorallocate($watermark, 255, 255, 255);
+        $blue = imagecolorallocate($watermark, 0, 100, 200);
+        imagefill($watermark, 0, 0, $white);
+        imagestring($watermark, 3, 5, 5, 'LOGO', $blue);
+        imagepng($watermark, $watermarkPath);
+        imagedestroy($watermark);
+
+        $options = [
+            'quality' => 90,
+            'watermark' => [
+                'path' => $watermarkPath, // Full path
+                'position' => 'top-left',
+                'opacity' => 80,
+            ]
+        ];
+
+        $result = $this->processor->process($this->testImageContent, $options);
+        
+        $this->assertIsArray($result);
+        $watermarkMeta = $result['metadata']['watermark'];
+        
+        // Should resolve to the actual file path
+        $this->assertEquals($watermarkPath, $watermarkMeta['watermark_path']);
+        $this->assertEquals('logo.png', $watermarkMeta['watermark_filename']);
+        $this->assertEquals('top-left', $watermarkMeta['position']);
+        
+        // Clean up
+        unlink($watermarkPath);
+        rmdir($publicDir);
+    }
 } 
