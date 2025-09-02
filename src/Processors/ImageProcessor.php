@@ -224,7 +224,7 @@ class ImageProcessor
         return $encoded->toString();
     }
 
-    public function createThumbnail(string $content, array $options): string|array
+    public function createThumbnail(string $content, array $options): string
     {
         $this->logger->info('Thumbnail creation started', ['options' => $options]);
 
@@ -257,13 +257,9 @@ class ImageProcessor
                 $image->scaleDown($width, $height);
         }
 
-        // Apply watermark to thumbnail if specified
-        $watermarkMetadata = null;
-        if (isset($options['watermark'])) {
-            $watermarkResult = $this->applyWatermark($image, $options['watermark']);
-            $image = $watermarkResult['image'];
-            $watermarkMetadata = $watermarkResult['metadata'] ?? null;
-        }
+        // ✅ REMOVED: No longer apply watermarks to thumbnails
+        // Thumbnails are created from already-watermarked content from main image processing
+        // This avoids double watermarking and keeps thumbnails clean
 
         $quality = $options['quality'] ?? 75;
         $format = $options['format'] ?? 'jpg';
@@ -278,25 +274,13 @@ class ImageProcessor
             'quality' => $quality
         ];
 
-        // Add watermark metadata if available
-        if ($watermarkMetadata) {
-            $processingMetadata['watermark'] = $watermarkMetadata;
-        }
-
         $this->logger->info('Thumbnail created', $processingMetadata);
 
-        // Return array with content and metadata when watermark was applied
-        if ($watermarkMetadata) {
-            return [
-                'content' => $encoded->toString(),
-                'metadata' => $processingMetadata
-            ];
-        }
-
+        // ✅ SIMPLIFIED: Always return string since no watermark metadata needed for thumbnails
         return $encoded->toString();
     }
 
-    public function compressImage(string $content, array $options = []): string
+    public function compressImage(string $content, array $options = []): string|array
     {
         $this->logger->info('Image compression started', ['options' => $options]);
 
@@ -313,6 +297,14 @@ class ImageProcessor
             return $this->compressToTargetSize($image, $targetSize, $format, $maxQuality, $minQuality);
         }
 
+        // Add watermark if specified
+        $watermarkMetadata = null;
+        if (isset($options['watermark'])) {
+            $watermarkResult = $this->applyWatermark($image, $options['watermark']);
+            $image = $watermarkResult['image'];
+            $watermarkMetadata = $watermarkResult['watermark_metadata'] ?? null;
+        }
+
         // Use quality-based compression
         $quality = $this->determineQuality($options, $format);
         $encoded = $this->encodeWithAdvancedCompression($image, $format, $quality, $options);
@@ -320,17 +312,31 @@ class ImageProcessor
         $finalSize = strlen($encoded->toString());
         $compressionRatio = round((1 - ($finalSize / $originalSize)) * 100, 2);
 
-        $this->logger->info('Image compression completed', [
+        $compressionMetadata = [
             'original_size' => $originalSize,
             'final_size' => $finalSize,
             'compression_ratio' => $compressionRatio . '%',
             'quality' => $quality
-        ]);
+        ];
+
+        if ($watermarkMetadata) {
+            $compressionMetadata['watermark'] = $watermarkMetadata;
+        }
+
+        $this->logger->info('Image compression completed', $compressionMetadata);
+
+        // Return metadata if watermark was applied
+        if ($watermarkMetadata) {
+            return [
+                'content' => $encoded->toString(),
+                'metadata' => $compressionMetadata
+            ];
+        }
 
         return $encoded->toString();
     }
 
-    public function optimizeForWeb(string $content, array $options = []): string
+    public function optimizeForWeb(string $content, array $options = []): string|array
     {
         $this->logger->info('Web optimization started');
 
@@ -354,14 +360,36 @@ class ImageProcessor
             $image->scaleDown($webOptions['max_width'], $webOptions['max_height']);
         }
 
+        // Add watermark if specified
+        $watermarkMetadata = null;
+        if (isset($webOptions['watermark'])) {
+            $watermarkResult = $this->applyWatermark($image, $webOptions['watermark']);
+            $image = $watermarkResult['image'];
+            $watermarkMetadata = $watermarkResult['watermark_metadata'] ?? null;
+        }
+
         $encoded = $this->encodeWithAdvancedCompression($image, $webOptions['format'], $webOptions['quality'], $webOptions);
 
-        $this->logger->info('Web optimization completed', [
+        $webMetadata = [
             'original_dimensions' => $originalWidth . 'x' . $originalHeight,
             'final_dimensions' => $image->width() . 'x' . $image->height(),
             'format' => $webOptions['format'],
             'quality' => $webOptions['quality']
-        ]);
+        ];
+
+        if ($watermarkMetadata) {
+            $webMetadata['watermark'] = $watermarkMetadata;
+        }
+
+        $this->logger->info('Web optimization completed', $webMetadata);
+
+        // Return metadata if watermark was applied
+        if ($watermarkMetadata) {
+            return [
+                'content' => $encoded->toString(),
+                'metadata' => $webMetadata
+            ];
+        }
 
         return $encoded->toString();
     }

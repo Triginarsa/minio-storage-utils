@@ -486,6 +486,10 @@ class StorageService implements StorageServiceInterface
         $shouldOptimize = $options['optimize'] ?? false;
         $shouldOptimizeForWeb = $options['optimize_for_web'] ?? false;
         
+        // ✅ NEW: Auto-enable image processing if watermark is specified
+        $hasWatermark = isset($options['watermark']);
+        $shouldProcess = $shouldOptimize || isset($options['image']) || $hasWatermark;
+        
         // Apply different processing based on options
         if ($shouldOptimizeForWeb) {
             // Web optimization (resize + compress for web)
@@ -496,11 +500,20 @@ class StorageService implements StorageServiceInterface
                 $webOptions['watermark'] = $options['watermark'];
             }
             
-            $processedContent = $this->imageProcessor->optimizeForWeb($content, $webOptions);
+            $webResult = $this->imageProcessor->optimizeForWeb($content, $webOptions);
+            
+            // Handle both old string return and new array return with metadata
+            if (is_array($webResult)) {
+                $processedContent = $webResult['content'];
+                $processingMetadata = $webResult['metadata'] ?? [];
+            } else {
+                $processedContent = $webResult;
+                $processingMetadata = [];
+            }
             
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $webOptions);
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions), $this->extractUrlOptions($options), $originalName);
+            $results['main'] = $this->uploadFileWithMetadata($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $webOptions), $this->extractUrlOptions($options), $originalName, $processingMetadata);
             
         } elseif ($shouldCompress) {
             // Dedicated compression
@@ -511,15 +524,31 @@ class StorageService implements StorageServiceInterface
                 $compressionOptions['watermark'] = $options['watermark'];
             }
             
-            $processedContent = $this->imageProcessor->compressImage($content, $compressionOptions);
+            $compressionResult = $this->imageProcessor->compressImage($content, $compressionOptions);
+            
+            // Handle both old string return and new array return with metadata
+            if (is_array($compressionResult)) {
+                $processedContent = $compressionResult['content'];
+                $processingMetadata = $compressionResult['metadata'] ?? [];
+            } else {
+                $processedContent = $compressionResult;
+                $processingMetadata = [];
+            }
             
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $compressionOptions);
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions), $this->extractUrlOptions($options), $originalName);
+            $results['main'] = $this->uploadFileWithMetadata($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $compressionOptions), $this->extractUrlOptions($options), $originalName, $processingMetadata);
             
-        } elseif ($shouldOptimize || isset($options['image'])) {
-            // General image processing with optimization
+        } elseif ($shouldProcess) {
+            // General image processing (includes watermark-only processing)
             $defaultImageOptions = function_exists('config') ? config('minio-storage.image', []) : [];
+            
+            // ✅ NEW: Set minimal defaults for watermark-only processing
+            if ($hasWatermark && !isset($options['image'])) {
+                $defaultImageOptions = array_merge([
+                    'quality' => 85, // Default quality for watermark-only processing
+                ], $defaultImageOptions);
+            }
             
             // Merge user options AFTER defaults to ensure user settings take precedence
             $imageOptions = array_merge($defaultImageOptions, $options['image'] ?? []);
@@ -570,27 +599,21 @@ class StorageService implements StorageServiceInterface
                 $thumbnailOptions['optimize'] = true;
             }
             
-            if (isset($options['watermark'])) {
-                $thumbnailOptions['watermark'] = $this->prepareThumbnailWatermarkOptions($options['watermark'], $thumbnailOptions);
-            }
+            // ✅ REMOVED: No longer apply watermarks to thumbnails since main image already has watermark
+            // Thumbnails will be generated from the already-watermarked main image content
+            // if (isset($options['watermark'])) {
+            //     $thumbnailOptions['watermark'] = $this->prepareThumbnailWatermarkOptions($options['watermark'], $thumbnailOptions);
+            // }
             
-            $thumbnailResult = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
-            
-            // Handle both old string return and new array return with metadata
-            if (is_array($thumbnailResult)) {
-                $thumbnailContent = $thumbnailResult['content'];
-                $thumbnailMetadata = $thumbnailResult['metadata'] ?? [];
-            } else {
-                $thumbnailContent = $thumbnailResult;
-                $thumbnailMetadata = [];
-            }
+            // ✅ SIMPLIFIED: createThumbnail now always returns string (no watermark metadata)
+            $thumbnailContent = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
             
             $thumbnailPath = $this->buildThumbnailPath($finalPath, $thumbnailOptions);
             
             $thumbnailPath = $this->updatePathExtensionIfNeeded($thumbnailPath, $thumbnailOptions);
             
             $thumbnailMimeType = $this->getOptimizedMimeType($mimeType, $thumbnailOptions);
-            $results['thumbnail'] = $this->uploadFileWithMetadata($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName, $thumbnailMetadata);
+            $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName);
         }
 
         return $results;
@@ -893,32 +916,9 @@ class StorageService implements StorageServiceInterface
         return $path;
     }
 
-    private function prepareThumbnailWatermarkOptions(array $watermarkOptions, array $thumbnailOptions): array
-    {
-        $defaultWatermarkConfig = function_exists('config') ? config('minio-storage.image.watermark', []) : [];
-        $watermarkConfig = array_merge($defaultWatermarkConfig, $watermarkOptions);
-        
-        if ($watermarkConfig['auto_resize'] ?? true) {
-            $thumbnailWidth = $thumbnailOptions['width'] ?? 150;
-            $thumbnailHeight = $thumbnailOptions['height'] ?? 150;
-            
-            if ($thumbnailWidth < 200 || $thumbnailHeight < 200) {
-                $watermarkConfig['size_ratio'] = ($watermarkConfig['size_ratio'] ?? 0.15) * 1.5; 
-                $watermarkConfig['min_size'] = max(30, ($watermarkConfig['min_size'] ?? 50) * 0.7); 
-            }
-
-            $maxThumbnailDimension = max($thumbnailWidth, $thumbnailHeight);
-            $watermarkConfig['max_size'] = min($watermarkConfig['max_size'] ?? 400, $maxThumbnailDimension * 0.4);
-        }
-        
-        $this->logger->info('Thumbnail watermark options prepared', [
-            'original_watermark_options' => $watermarkOptions,
-            'thumbnail_options' => $thumbnailOptions,
-            'adjusted_watermark_options' => $watermarkConfig
-        ]);
-        
-        return $watermarkConfig;
-    }
+    // ✅ REMOVED: prepareThumbnailWatermarkOptions method no longer needed
+    // Thumbnails are now created from already-watermarked main image content
+    // This eliminates the need for separate watermark processing on thumbnails
 
     private function ensureUniqueFilename(string $path): string
     {
