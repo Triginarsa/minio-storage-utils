@@ -490,6 +490,12 @@ class StorageService implements StorageServiceInterface
         if ($shouldOptimizeForWeb) {
             // Web optimization (resize + compress for web)
             $webOptions = array_merge(function_exists('config') ? config('minio-storage.web_optimization', []) : [], $options['web_options'] ?? []);
+            
+            // Add watermark options if provided at top level
+            if (isset($options['watermark'])) {
+                $webOptions['watermark'] = $options['watermark'];
+            }
+            
             $processedContent = $this->imageProcessor->optimizeForWeb($content, $webOptions);
             
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $webOptions);
@@ -499,6 +505,12 @@ class StorageService implements StorageServiceInterface
         } elseif ($shouldCompress) {
             // Dedicated compression
             $compressionOptions = array_merge(function_exists('config') ? config('minio-storage.compression', []) : [], $options['compression_options'] ?? []);
+            
+            // Add watermark options if provided at top level
+            if (isset($options['watermark'])) {
+                $compressionOptions['watermark'] = $options['watermark'];
+            }
+            
             $processedContent = $this->imageProcessor->compressImage($content, $compressionOptions);
             
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $compressionOptions);
@@ -518,7 +530,21 @@ class StorageService implements StorageServiceInterface
                 $imageOptions['smart_compression'] = $options['smart_compression'] ?? true;
             }
             
-            $processedContent = $this->imageProcessor->process($content, $imageOptions);
+            // Add watermark options if provided at top level
+            if (isset($options['watermark'])) {
+                $imageOptions['watermark'] = $options['watermark'];
+            }
+            
+            $processResult = $this->imageProcessor->process($content, $imageOptions);
+            
+            // Handle both old string return and new array return with metadata
+            if (is_array($processResult)) {
+                $processedContent = $processResult['content'];
+                $processingMetadata = $processResult['metadata'] ?? [];
+            } else {
+                $processedContent = $processResult;
+                $processingMetadata = [];
+            }
 
             $finalPath = $this->updatePathExtensionIfNeeded($finalPath, $imageOptions);
             
@@ -527,7 +553,7 @@ class StorageService implements StorageServiceInterface
                 $this->performSecurityScanOnProcessedImage($processedContent, $finalPath, $options);
             }
             
-            $results['main'] = $this->uploadFile($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $imageOptions), $this->extractUrlOptions($options), $originalName);
+            $results['main'] = $this->uploadFileWithMetadata($finalPath, $processedContent, $this->getOptimizedMimeType($mimeType, $imageOptions), $this->extractUrlOptions($options), $originalName, $processingMetadata);
             
         } else {
             // Upload original image
@@ -548,13 +574,23 @@ class StorageService implements StorageServiceInterface
                 $thumbnailOptions['watermark'] = $this->prepareThumbnailWatermarkOptions($options['watermark'], $thumbnailOptions);
             }
             
-            $thumbnailContent = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
+            $thumbnailResult = $this->imageProcessor->createThumbnail($processedContent, $thumbnailOptions);
+            
+            // Handle both old string return and new array return with metadata
+            if (is_array($thumbnailResult)) {
+                $thumbnailContent = $thumbnailResult['content'];
+                $thumbnailMetadata = $thumbnailResult['metadata'] ?? [];
+            } else {
+                $thumbnailContent = $thumbnailResult;
+                $thumbnailMetadata = [];
+            }
+            
             $thumbnailPath = $this->buildThumbnailPath($finalPath, $thumbnailOptions);
             
             $thumbnailPath = $this->updatePathExtensionIfNeeded($thumbnailPath, $thumbnailOptions);
             
             $thumbnailMimeType = $this->getOptimizedMimeType($mimeType, $thumbnailOptions);
-            $results['thumbnail'] = $this->uploadFile($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName);
+            $results['thumbnail'] = $this->uploadFileWithMetadata($thumbnailPath, $thumbnailContent, $thumbnailMimeType, $this->extractUrlOptions($options), $originalName, $thumbnailMetadata);
         }
 
         return $results;
