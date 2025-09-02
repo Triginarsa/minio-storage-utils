@@ -791,6 +791,11 @@ class StorageService implements StorageServiceInterface
 
     private function uploadFile(string $path, string $content, string $mimeType, array $urlOptions = [], ?string $originalName = null): array
     {
+        return $this->uploadFileWithMetadata($path, $content, $mimeType, $urlOptions, $originalName, []);
+    }
+
+    private function uploadFileWithMetadata(string $path, string $content, string $mimeType, array $urlOptions = [], ?string $originalName = null, array $metadata = []): array
+    {
         $this->filesystem->write($path, $content, ['mimetype' => $mimeType]);
 
         $url = $this->getUrl($path, $urlOptions['expiration'] ?? null, $urlOptions['signed'] ?? null);
@@ -798,7 +803,7 @@ class StorageService implements StorageServiceInterface
         // Ensure path has single leading slash
         $normalizedPath = '/' . ltrim($path, '/');
         
-        return [
+        $result = [
             'path' => $normalizedPath,
             'url' => $url,
             'size' => strlen($content),
@@ -806,6 +811,13 @@ class StorageService implements StorageServiceInterface
             'original_name' => $originalName,
             'file_name' => basename($path),
         ];
+
+        // Add processing metadata if available
+        if (!empty($metadata)) {
+            $result['processing'] = $metadata;
+        }
+
+        return $result;
     }
 
     private function downloadToTemp(string $path): string
