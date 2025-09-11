@@ -226,9 +226,9 @@ class StorageService implements StorageServiceInterface
             // Determine if URL should be signed based on config or parameter
             $shouldSign = $signed ?? (function_exists('config') ? config('minio-storage.url.signed_by_default', false) : false);
             
-            // If not signed, return public URL
+            // If not signed, use optimized public URL method
             if (!$shouldSign) {
-                return $this->getPublicUrl($path);
+                return $this->getUrlPublic($path, false);
             }
 
             // If expiration is null, check config for default behavior
@@ -238,12 +238,15 @@ class StorageService implements StorageServiceInterface
             }
 
             if ($expiration === null) {
-                return $this->getPublicUrl($path);
+                return $this->getUrlPublic($path, false);
             }
+
+            // Clean path for S3 operations
+            $cleanPath = ltrim($path, '/');
 
             $command = $this->s3Client->getCommand('GetObject', [
                 'Bucket' => $this->bucket,
-                'Key' => ltrim($path, '/')
+                'Key' => $cleanPath
             ]);
 
             $request = $this->s3Client->createPresignedRequest($command, "+{$expiration} seconds");
@@ -295,6 +298,64 @@ class StorageService implements StorageServiceInterface
             
             throw new UploadException(
                 "Failed to generate public URL: {$e->getMessage()}",
+                ['path' => $path],
+                $e
+            );
+        }
+    }
+
+    /**
+     * Get a public URL for a file with existence check (optimized for public read access).
+     * This is the most efficient way to get public URLs with optional file existence verification.
+     */
+    public function getUrlPublic(string $path, bool $checkExists = true): ?string
+    {
+        $this->logger->info('Generating optimized public URL', ['path' => $path, 'check_exists' => $checkExists]);
+
+        try {
+            // Clean path once for all operations
+            $cleanPath = ltrim($path, '/');
+
+            // Check file existence if requested (most efficient way)
+            if ($checkExists && !$this->fileExists($cleanPath)) {
+                $this->logger->warning('File not found for public URL generation', ['path' => $path]);
+                throw new FileNotFoundException($path);
+            }
+
+            // Cache config values to avoid repeated function calls
+            static $endpoint = null;
+            static $bucket = null;
+            
+            if ($endpoint === null) {
+                $endpoint = rtrim(function_exists('config') ? config("filesystems.disks.minio.endpoint", $this->s3Client->getEndpoint()) : $this->s3Client->getEndpoint(), '/');
+            }
+            
+            if ($bucket === null) {
+                $bucket = rtrim(function_exists('config') ? config("filesystems.disks.minio.bucket", $this->bucket) : $this->bucket, '/');
+            }
+
+            // Generate URL efficiently
+            $publicUrl = "{$endpoint}/{$bucket}/" . $cleanPath;
+
+            $this->logger->info('Optimized public URL generated successfully', [
+                'path' => $path,
+                'url' => $publicUrl,
+                'file_exists_checked' => $checkExists
+            ]);
+
+            return $publicUrl;
+
+        } catch (FileNotFoundException $e) {
+            // Re-throw FileNotFoundException as-is
+            throw $e;
+        } catch (\Exception $e) {
+            $this->logger->error('Failed to generate optimized public URL', [
+                'path' => $path,
+                'error' => $e->getMessage()
+            ]);
+            
+            throw new UploadException(
+                "Failed to generate optimized public URL: {$e->getMessage()}",
                 ['path' => $path],
                 $e
             );

@@ -57,4 +57,14 @@ interface StorageServiceInterface
      * @return string The public URL.
      */
     public function getPublicUrl(string $path): string;
+
+    /**
+     * Get a public URL for a file with existence check (optimized for public read access).
+     *
+     * @param string $path The path of the file.
+     * @param bool $checkExists Whether to verify file existence before generating URL.
+     * @return string|null The public URL or null if file doesn't exist (when checkExists is true).
+     * @throws FileNotFoundException When file doesn't exist and checkExists is true.
+     */
+    public function getUrlPublic(string $path, bool $checkExists = true): ?string;
 } 
