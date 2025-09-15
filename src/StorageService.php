@@ -145,15 +145,50 @@ class StorageService implements StorageServiceInterface
     public function fileExists(string $path): bool
     {
         $path = ltrim($path, '/');
-        try {
-            return $this->filesystem->fileExists($path);
-        } catch (FilesystemException $e) {
-            $this->logger->error('File existence check failed', [
-                'path' => $path,
-                'error' => $e->getMessage()
-            ]);
-            return false;
+        
+        // Retry mechanism for eventual consistency issues
+        $maxRetries = 3;
+        $retryDelay = 100000; // 100ms in microseconds
+        
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $exists = $this->filesystem->fileExists($path);
+                
+                if ($exists || $attempt === $maxRetries) {
+                    return $exists;
+                }
+                
+                // If file doesn't exist on first attempts, wait and retry
+                if ($attempt < $maxRetries) {
+                    $this->logger->debug('File existence check retry', [
+                        'path' => $path,
+                        'attempt' => $attempt,
+                        'max_retries' => $maxRetries
+                    ]);
+                    usleep($retryDelay);
+                    $retryDelay *= 2; // Exponential backoff
+                }
+                
+            } catch (FilesystemException $e) {
+                $this->logger->error('File existence check failed', [
+                    'path' => $path,
+                    'attempt' => $attempt,
+                    'max_retries' => $maxRetries,
+                    'error' => $e->getMessage()
+                ]);
+                
+                // If this is the last attempt, return false
+                if ($attempt === $maxRetries) {
+                    return false;
+                }
+                
+                // Wait before retry
+                usleep($retryDelay);
+                $retryDelay *= 2;
+            }
         }
+        
+        return false;
     }
 
     public function getMetadata(string $path): array
