@@ -343,9 +343,13 @@ class StorageService implements StorageServiceInterface
      * Get a public URL for a file with existence check (optimized for public read access).
      * This is the most efficient way to get public URLs with optional file existence verification.
      */
-    public function getUrlPublic(string $path, bool $checkExists = true): ?string
+    public function getUrlPublic(string $path, bool $checkExists = true, ?string $bucket = null): ?string
     {
-        $this->logger->info('Generating optimized public URL', ['path' => $path, 'check_exists' => $checkExists]);
+        $this->logger->info('Generating optimized public URL', [
+            'path' => $path, 
+            'check_exists' => $checkExists, 
+            'custom_bucket' => $bucket
+        ]);
 
         try {
             // Clean path once for all operations
@@ -359,23 +363,28 @@ class StorageService implements StorageServiceInterface
 
             // Cache config values to avoid repeated function calls
             static $endpoint = null;
-            static $bucket = null;
+            static $defaultBucket = null;
             
             if ($endpoint === null) {
                 $endpoint = rtrim(function_exists('config') ? config("filesystems.disks.minio.endpoint", $this->s3Client->getEndpoint()) : $this->s3Client->getEndpoint(), '/');
             }
             
-            if ($bucket === null) {
-                $bucket = rtrim(function_exists('config') ? config("filesystems.disks.minio.bucket", $this->bucket) : $this->bucket, '/');
+            if ($defaultBucket === null) {
+                $defaultBucket = rtrim(function_exists('config') ? config("filesystems.disks.minio.bucket", $this->bucket) : $this->bucket, '/');
             }
 
+            // Use provided bucket or fall back to default bucket
+            $targetBucket = $bucket ? rtrim($bucket, '/') : $defaultBucket;
+
             // Generate URL efficiently
-            $publicUrl = "{$endpoint}/{$bucket}/" . $cleanPath;
+            $publicUrl = "{$endpoint}/{$targetBucket}/" . $cleanPath;
 
             $this->logger->info('Optimized public URL generated successfully', [
                 'path' => $path,
                 'url' => $publicUrl,
-                'file_exists_checked' => $checkExists
+                'file_exists_checked' => $checkExists,
+                'bucket_used' => $targetBucket,
+                'custom_bucket' => $bucket !== null
             ]);
 
             return $publicUrl;
@@ -386,12 +395,13 @@ class StorageService implements StorageServiceInterface
         } catch (\Exception $e) {
             $this->logger->error('Failed to generate optimized public URL', [
                 'path' => $path,
+                'bucket' => $bucket,
                 'error' => $e->getMessage()
             ]);
             
             throw new UploadException(
                 "Failed to generate optimized public URL: {$e->getMessage()}",
-                ['path' => $path],
+                ['path' => $path, 'bucket' => $bucket],
                 $e
             );
         }

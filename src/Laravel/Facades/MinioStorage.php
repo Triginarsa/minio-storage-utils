@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Facade;
  * @method static array getMetadata(string $path)
  * @method static string getUrl(string $path, int $expiration = null, bool $signed = null)
  * @method static string getPublicUrl(string $path)
- * @method static string|null getUrlPublic(string $path, bool $checkExists = true)
+ * @method static string|null getUrlPublic(string $path, bool $checkExists = true, string|null $bucket = null)
  */
 class MinioStorage extends Facade
 {

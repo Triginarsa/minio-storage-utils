@@ -197,6 +197,31 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Additional Buckets Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Define additional buckets that can be used with getUrlPublic method.
+    | This allows you to generate URLs for files in different buckets.
+    |
+    | Example:
+    | 'buckets' => [
+    |     'images' => 'my-images-bucket',
+    |     'documents' => 'my-documents-bucket',
+    |     'videos' => 'my-videos-bucket',
+    | ],
+    |
+    | Usage: MinioStorage::getUrlPublic($path, true, 'my-images-bucket')
+    |
+    */
+    'buckets' => [
+        // Define your additional buckets here
+        // 'images' => env('MINIO_IMAGES_BUCKET', 'images'),
+        // 'documents' => env('MINIO_DOCUMENTS_BUCKET', 'documents'),
+        // 'videos' => env('MINIO_VIDEOS_BUCKET', 'videos'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | URL Configuration
     |--------------------------------------------------------------------------
     |
