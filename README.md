@@ -169,6 +169,39 @@ public function view(Request $request)
 
 ```
 
+Laravel Example: `getUrlPublic` with fallback
+
+```php
+use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
+
+public function publicUrl(string $filePath)
+{
+    try {
+        // Optionally disable existence check: getUrlPublic($filePath, false)
+        $result = MinioStorage::getUrlPublic($filePath);
+        return $result;
+    } catch (\Throwable $e) {
+        return 'img/default.png';
+    }
+}
+```
+
+Laravel Example: `getUrlPublic` from another bucket
+
+```php
+use Triginarsa\MinioStorageUtils\Laravel\Facades\MinioStorage;
+
+public function publicUrlFromOtherBucket(string $filePath, string $bucket)
+{
+    try {
+        // Existence check works only on the default bucket; disable it for cross-bucket
+        return MinioStorage::getUrlPublic($filePath, false, $bucket);
+    } catch (\Throwable $e) {
+        return 'img/default.png';
+    }
+}
+```
+
 ### Get File Metadata
 
 ```
