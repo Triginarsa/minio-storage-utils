@@ -63,8 +63,9 @@ interface StorageServiceInterface
      *
      * @param string $path The path of the file.
      * @param bool $checkExists Whether to verify file existence before generating URL.
+     * @param string|null $bucket Custom bucket name (overrides default bucket).
      * @return string|null The public URL or null if file doesn't exist (when checkExists is true).
      * @throws FileNotFoundException When file doesn't exist and checkExists is true.
      */
-    public function getUrlPublic(string $path, bool $checkExists = true): ?string;
+    public function getUrlPublic(string $path, bool $checkExists = true, ?string $bucket = null): ?string;
 } 
