@@ -351,7 +351,7 @@ class StorageService implements StorageServiceInterface
      * Get a public URL for a file with existence check (optimized for public read access).
      * This is the most efficient way to get public URLs with optional file existence verification.
      */
-    public function getUrlPublic(string $path, bool $checkExists = true, ?string $bucket = null): ?string
+    public function getUrlPublic(string $path, ?string $bucket = null, bool $checkExists = true): ?string
     {
         $this->logger->info('Generating optimized public URL', [
             'path' => $path, 
