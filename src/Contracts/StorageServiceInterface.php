@@ -28,9 +28,10 @@ interface StorageServiceInterface
      * Check if a file exists in the bucket.
      *
      * @param string $path The path of the file.
+     * @param string|null $bucket Custom bucket name (overrides default bucket).
      * @return bool
      */
-    public function fileExists(string $path): bool;
+    public function fileExists(string $path, ?string $bucket = null): bool;
 
     /**
      * Get metadata for a file.
@@ -62,7 +63,7 @@ interface StorageServiceInterface
      * Get a public URL for a file with existence check (optimized for public read access).
      *
      * @param string $path The path of the file.
-     * @param bool $checkExists Whether to verify file existence before generating URL.
+     * @param bool $checkExists Whether to verify file existence before generating URL (optional, default: true).
      * @param string|null $bucket Custom bucket name (overrides default bucket).
      * @return string|null The public URL or null if file doesn't exist (when checkExists is true).
      * @throws FileNotFoundException When file doesn't exist and checkExists is true.

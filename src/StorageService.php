@@ -142,7 +142,7 @@ class StorageService implements StorageServiceInterface
         }
     }
 
-    public function fileExists(string $path): bool
+    public function fileExists(string $path, ?string $bucket = null): bool
     {
         $path = ltrim($path, '/');
         
@@ -152,7 +152,13 @@ class StorageService implements StorageServiceInterface
         
         for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
             try {
-                $exists = $this->filesystem->fileExists($path);
+                // If custom bucket is provided, use S3 client directly
+                if ($bucket !== null) {
+                    $exists = $this->s3Client->doesObjectExist($bucket, $path);
+                } else {
+                    // Use default filesystem for default bucket
+                    $exists = $this->filesystem->fileExists($path);
+                }
                 
                 if ($exists || $attempt === $maxRetries) {
                     return $exists;
@@ -162,6 +168,7 @@ class StorageService implements StorageServiceInterface
                 if ($attempt < $maxRetries) {
                     $this->logger->debug('File existence check retry', [
                         'path' => $path,
+                        'bucket' => $bucket ?? 'default',
                         'attempt' => $attempt,
                         'max_retries' => $maxRetries
                     ]);
@@ -169,9 +176,10 @@ class StorageService implements StorageServiceInterface
                     $retryDelay *= 2; // Exponential backoff
                 }
                 
-            } catch (FilesystemException $e) {
+            } catch (\Exception $e) {
                 $this->logger->error('File existence check failed', [
                     'path' => $path,
+                    'bucket' => $bucket ?? 'default',
                     'attempt' => $attempt,
                     'max_retries' => $maxRetries,
                     'error' => $e->getMessage()
@@ -356,8 +364,11 @@ class StorageService implements StorageServiceInterface
             $cleanPath = ltrim($path, '/');
 
             // Check file existence if requested (most efficient way)
-            if ($checkExists && !$this->fileExists($cleanPath)) {
-                $this->logger->warning('File not found for public URL generation', ['path' => $path]);
+            if ($checkExists && !$this->fileExists($cleanPath, $bucket)) {
+                $this->logger->warning('File not found for public URL generation', [
+                    'path' => $path,
+                    'bucket' => $bucket ?? 'default'
+                ]);
                 throw new FileNotFoundException($path);
             }
 
