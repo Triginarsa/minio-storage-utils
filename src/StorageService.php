@@ -271,7 +271,7 @@ class StorageService implements StorageServiceInterface
             
             // If not signed, use optimized public URL method
             if (!$shouldSign) {
-                return $this->getUrlPublic($path, false);
+                return $this->getUrlPublic($path, null, true);
             }
 
             // If expiration is null, check config for default behavior
@@ -281,7 +281,7 @@ class StorageService implements StorageServiceInterface
             }
 
             if ($expiration === null) {
-                return $this->getUrlPublic($path, false);
+                return $this->getUrlPublic($path, null, true);
             }
 
             // Clean path for S3 operations
