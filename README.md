@@ -452,8 +452,8 @@ try {
 
 ## Requirements
 
-- PHP 8.1+
-- Laravel 10.0+
+- PHP 8.2+
+- Laravel 9.0+ (including Laravel 12)
 - MinIO server or S3-compatible storage
 - GD extension (for image processing)
 - FFmpeg (optional, for video processing)
